@@ -69,7 +69,7 @@ wss.on('connection', (socket) => {
     // Relayed deltas, destruction, and newly created tree nodes are binary-only.
     if (type !== 2 && type !== 3 && type !== 4) return;
     if (!snapshot) return;
-    journal.push(Buffer.from(packet));
+    if (type !== 5) journal.push(Buffer.from(packet));
     if (journal.length > MAX_JOURNAL) {
       // Keep bounded memory; a new seed snapshot is required to compact the journal.
       journal = journal.slice(-MAX_JOURNAL);
