@@ -603,7 +603,8 @@ const rgb = n => { const h = BC[n]; return [(h >> 16 & 255) / 255, (h >> 8 & 255
 
 const parts = [];
 let _instanceId = 1, _applyingRemote = false, _renderDirty = true, _sceneRenderer = null, _network = null, _selectedInstance = null, _runtimeUIReady = false;
-const _allocateId = () => _instanceId++;
+const _idPrefix = ((crypto.getRandomValues(new Uint32Array(1))[0] & 0x000fffff) << 12) >>> 0;
+const _allocateId = () => ((_idPrefix + _instanceId++) >>> 0);
 class Signal {
   constructor() { this._callbacks = new Set(); }
   Connect(fn) { this._callbacks.add(fn); return { Disconnect: () => this._callbacks.delete(fn) }; }
@@ -697,9 +698,9 @@ const CFrame={new:(x=0,y=0,z=0,yaw=0)=>({Position:[Number(x),Number(y),Number(z)
 const Enum={Material:new Proxy({}, {get:(_,n)=>String(n)}),PartType:new Proxy({}, {get:(_,n)=>String(n)})};
 const InstanceFactory={new:(kind='Part')=>{if(kind==='Part'||kind==='MeshPart'||kind==='WedgePart')return new Part(kind,kind==='WedgePart'?'wedge':'cube',[0,1,0],[4,1,2],[.64,.64,.64],{Anchored:false});if(kind==='Folder')return new Folder();if(kind==='Model')return new Model();if(kind==='WeldConstraint')return new WeldConstraint();if(kind==='SpringConstraint')return new SpringConstraint();throw new Error('Instance.new("'+kind+'") is unavailable in this prototype');}};
 window.Instance=InstanceFactory;window.Vector3=Vector3;window.Color3=Color3;window.CFrame=CFrame;
-function _markSceneDirty(){_renderDirty=true;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer&&!_applyingRemote){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
+function _markSceneDirty(){_renderDirty=true;if(_applyingRemote)return;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
 function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
-Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node)){parts.push(node);node.Changed.Connect(prop=>{if(!_applyingRemote&&_network)_network.sendProperty(node,prop);_markSceneDirty()});node.Destroying.Connect(()=>{if(!_applyingRemote&&_network)_network.sendDestroy(node.Id)})}_markSceneDirty()});
+Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node))parts.push(node);if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
 Workspace.DescendantRemoving.Connect(node=>{const i=parts.indexOf(node);if(i>=0)parts.splice(i,1);_markSceneDirty()});
 const add=(shape,pos,size,brickColor,o={})=>{const defaultName=shape[0].toUpperCase()+shape.slice(1)+'_'+String(_instanceId).padStart(4,'0');const p=new Part(o.Name||defaultName,shape,pos,size,rgb(brickColor),o);p.Anchored=o.Anchored??true;p.CanCollide=o.CanCollide??true;Workspace.AddChild(p);return p};
 class PhysicsWorld {
@@ -734,9 +735,120 @@ add('sphere', [-16, 2, 20], [4, 4, 4], 'Bright red', { rough: 0.3 }); add('spher
 add('sphere', [-8, 2, 28], [4, 4, 4], 'Bright yellow', { metal: 1, rough: 0.25 }); add('sphere', [8, 2, 28], [4, 4, 4], 'Institutional white', { rough: 0.3 });
 for (const x of [-12, -4, 4, 12]) add('cylinder', [x, 8, -26], [4, 16, 4], 'Medium stone grey', { rough: 0.8 });
 
+
+function _escapeXML(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function _downloadFile(name,blob){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+const _shapeToId={cube:0,sphere:1,cylinder:2,wedge:3,cone:4},_idToShape=['cube','sphere','cylinder','wedge','cone'];
+const _materials=['Plastic','Neon','Concrete','Wood','Metal','Grass'];
+function _parentWireId(node){if(!node||node===Workspace)return 0;if(node===ReplicatedStorage)return 4294967281;if(node===ServerStorage)return 4294967282;if(node===Players)return 4294967283;return node.Id>>>0}
+function _nodeClassId(n){return n instanceof Part?1:n instanceof Model?2:n instanceof Folder?3:0}
+function _wireNodes(){return [...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].filter(n=>_nodeClassId(n)!==0)}
+function _encodeGraph(magic,packetType,nodes){
+ const enc=new TextEncoder(),names=nodes.map(n=>enc.encode(n.Name)),size=12+nodes.reduce((s,n,i)=>s+72+names[i].length,0),out=new Uint8Array(size),v=new DataView(out.buffer);
+ out.set(enc.encode(magic).slice(0,4),0);if(magic==='CBXM'){v.setUint16(4,1,true);v.setUint16(6,0,true)}else{out[4]=packetType||1}
+ v.setUint32(8,nodes.length,true);let at=12;
+ for(let i=0;i<nodes.length;i++){
+  const n=nodes[i],name=names[i],isPart=n instanceof Part,shape=isPart?(_shapeToId[n.Shape]??0):0;
+  let flags=0;if(isPart){if(n.Anchored)flags|=1;if(n.CanCollide)flags|=2;if(n.Studs)flags|=4;flags|=(_materials.indexOf(n.Material)<0?0:_materials.indexOf(n.Material))<<3}
+  v.setUint32(at,n.Id>>>0,true);v.setUint32(at+4,_parentWireId(n.Parent),true);v.setUint16(at+8,name.length,true);out[at+10]=_nodeClassId(n);out[at+11]=shape;v.setUint16(at+12,flags,true);v.setUint16(at+14,0,true);
+  const pos=isPart?n.Position:[0,0,0],siz=isPart?n.Size:[0,0,0],col=isPart?n.Color:[0,0,0],vals=[...pos,...siz,...col,isPart?n.Yaw:0,isPart?n.Roughness:0,isPart?n.Metalness:0,isPart?n.Emissive:0,isPart?n.Transparency:0];
+  vals.forEach((x,k)=>v.setFloat32(at+16+k*4,Number(x)||0,true));out.set(name,at+72);at+=72+name.length;
+ }
+ return out;
+}
+function _decodeGraph(buffer,expectedMagic){
+ const data=buffer instanceof ArrayBuffer?new Uint8Array(buffer):buffer instanceof Uint8Array?buffer:new Uint8Array(buffer),v=new DataView(data.buffer,data.byteOffset,data.byteLength),magic=String.fromCharCode(...data.slice(0,4));
+ if(magic!==expectedMagic)throw new Error('Invalid '+expectedMagic+' file header');if(data.length<12)throw new Error('Scene file is truncated');
+ const count=v.getUint32(8,true);if(count>200000)throw new Error('Scene has too many records');let at=12;const out=[],dec=new TextDecoder();
+ for(let i=0;i<count;i++){if(at+72>data.length)throw new Error('Truncated record '+i);const id=v.getUint32(at,true),parentId=v.getUint32(at+4,true),nameLen=v.getUint16(at+8,true),classId=data[at+10],shapeId=data[at+11],flags=v.getUint16(at+12,true);if(at+72+nameLen>data.length)throw new Error('Truncated name in record '+i);const name=dec.decode(data.slice(at+72,at+72+nameLen)),a=[];for(let j=0;j<14;j++)a.push(v.getFloat32(at+16+j*4,true));out.push({id,parentId,name,classId,shape:_idToShape[shapeId]||'cube',flags,pos:a.slice(0,3),size:a.slice(3,6),color:a.slice(6,9),yaw:a[9],rough:a[10],metal:a[11],emissive:a[12],transparency:a[13]});at+=72+nameLen}
+ if(at!==data.length)throw new Error('Unexpected trailing scene data');return out;
+}
+function _nodeFromRecord(rec,preserveId){
+ let node;if(rec.classId===1){node=new Part(rec.name,rec.shape,rec.pos,rec.size,rec.color,{Anchored:!!(rec.flags&1),CanCollide:!!(rec.flags&2),Studs:!!(rec.flags&4),Roughness:rec.rough,Metalness:rec.metal,Emissive:rec.emissive,Transparency:rec.transparency,Material:_materials[(rec.flags>>3)&7]||'Plastic',yaw:rec.yaw})}
+ else if(rec.classId===2)node=new Model(rec.name);else if(rec.classId===3)node=new Folder(rec.name);else return null;
+ if(preserveId)node.Id=rec.id>>>0;return node;
+}
+function _applyRecords(records,replace=false){
+ _applyingRemote=true;
+ try{
+  if(replace){Workspace.ClearAllChildren();ReplicatedStorage.ClearAllChildren()}
+  const map=new Map();for(const n of [...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()])map.set(n.Id>>>0,n);
+  const pending=[];
+  for(const rec of records){if(map.has(rec.id>>>0))continue;const node=_nodeFromRecord(rec,true);if(!node)continue;map.set(node.Id>>>0,node);pending.push([node,rec])}
+  for(const [node,rec] of pending){let parent=rec.parentId===4294967281?ReplicatedStorage:rec.parentId===4294967282?ServerStorage:rec.parentId===4294967283?Players:rec.parentId===0?Workspace:map.get(rec.parentId>>>0);if(!(parent instanceof Instance))parent=Workspace;parent.AddChild(node)}
+ }finally{_applyingRemote=false}
+ _markSceneDirty();renderTree();
+}
+const _propertyCode={Name:1,Position:2,Size:3,Color:4,Yaw:5,Transparency:6,CanCollide:7,Anchored:8,Material:9,Roughness:10,Metalness:11,Emissive:12,Studs:13,Shape:14,Parent:15};
+function _encodeDelta(node,prop){
+ const code=_propertyCode[prop];if(!code)return null;let payload=new Uint8Array(0);
+ if(prop==='Name'||prop==='Material'){const str=new TextEncoder().encode(String(prop==='Name'?node.Name:node.Material));payload=new Uint8Array(2+str.length);new DataView(payload.buffer).setUint16(0,str.length,true);payload.set(str,2)}
+ else if(prop==='Position'||prop==='Size'||prop==='Color'){const vals=prop==='Position'?node.Position:prop==='Size'?node.Size:node.Color;payload=new Uint8Array(12);const v=new DataView(payload.buffer);vals.forEach((x,i)=>v.setFloat32(i*4,x,true))}
+ else if(prop==='Parent'){payload=new Uint8Array(4);new DataView(payload.buffer).setUint32(0,_parentWireId(node.Parent),true)}
+ else if(prop==='Shape'){payload=new Uint8Array([_shapeToId[node.Shape]||0])}
+ else if(['CanCollide','Anchored','Studs'].includes(prop)){payload=new Uint8Array([node[prop]?1:0])}
+ else {payload=new Uint8Array(4);new DataView(payload.buffer).setFloat32(0,Number(node[prop[0].toUpperCase()+prop.slice(1)])||0,true)}
+ const out=new Uint8Array(13+payload.length);out.set([67,66,78,49,2,0,0,0]);const v=new DataView(out.buffer);v.setUint32(8,node.Id>>>0,true);out[12]=code;out.set(payload,13);return out;
+}
+function _applyDelta(bytes){
+ const b=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes),v=new DataView(b.buffer,b.byteOffset,b.byteLength);if(b.length<13)return;
+ const id=v.getUint32(8,true),code=b[12],prop=Object.keys(_propertyCode).find(k=>_propertyCode[k]===code),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants(),...ServerStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);
+ if(!node||!prop)return;let p=13,val;
+ if(prop==='Name'||prop==='Material'){const n=v.getUint16(p,true);val=new TextDecoder().decode(b.slice(p+2,p+2+n))}
+ else if(prop==='Position'||prop==='Size'||prop==='Color')val=[v.getFloat32(p,true),v.getFloat32(p+4,true),v.getFloat32(p+8,true)];
+ else if(prop==='Parent'){const pid=v.getUint32(p,true);val=pid===4294967281?ReplicatedStorage:pid===4294967282?ServerStorage:pid===4294967283?Players:pid===0?Workspace:[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===pid)||Workspace}
+ else if(prop==='Shape')val=_idToShape[b[p]]||'cube';
+ else if(['CanCollide','Anchored','Studs'].includes(prop))val=!!b[p];
+ else val=v.getFloat32(p,true);
+ _applyingRemote=true;try{if(prop==='Parent')node.Parent=val;else if(prop==='Shape'&&node instanceof Part)node.Shape=val;else if(prop in node)node[prop]=val}catch(e){console.warn('Dropped invalid replicated property',prop,e)}finally{_applyingRemote=false}
+}
+class NetworkClient {
+ constructor(url){this.url=url;this.socket=null;this.state='connecting';this.retries=0;this.journalApplied=0}
+ start(){this._connect()}
+ _connect(){if(this.url==='off'||this.url==='local')return;try{const ws=this.socket=new WebSocket(this.url);ws.binaryType='arraybuffer';ws.onopen=()=>{this.state='connected';this.retries=0;console.info('CrimBlox network connected')};ws.onmessage=async e=>{try{const b=new Uint8Array(e.data instanceof Blob?await e.data.arrayBuffer():e.data);if(b.length<5||String.fromCharCode(...b.slice(0,4))!=='CBN1')return;const type=b[4];if(type===0){ws.send(_encodeGraph('CBN1',1,_wireNodes()));return}if(type===1){_applyRecords(_decodeGraph(b,'CBN1'),true);this.state='synced';return}if(type===2){_applyDelta(b);return}if(type===3){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);if(node){_applyingRemote=true;try{node.Destroy()}finally{_applyingRemote=false}}}return}if(type===4){const records=_decodeGraph(b,'CBN1');_applyRecords(records,false);return}}catch(err){console.warn('Replication packet rejected',err)}};ws.onclose=()=>{this.state='offline';if(this.url!=='off'&&this.url!=='local'&&this.retries<20){this.retries++;setTimeout(()=>this._connect(),4000)}};ws.onerror=()=>{this.state='offline'}}catch(e){this.state='offline'}}
+ sendProperty(node,prop){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const packet=_encodeDelta(node,prop);if(packet)this.socket.send(packet)}
+ sendDestroy(id){if(!this.socket||this.socket.readyState!==WebSocket.OPEN)return;const b=new Uint8Array(12);b.set([67,66,78,49,3,0,0,0]);new DataView(b.buffer).setUint32(8,id>>>0,true);this.socket.send(b)}
+ sendCreate(node){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const b=_encodeGraph('CBN1',4,[node]);this.socket.send(b)}
+}
+
 const el = 50 * Math.PI / 180, az = 35 * Math.PI / 180;
 const env = { sunDir: [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)], sunColor: [3.0, 2.75, 2.3], hazeDensity: 0.0015, shadowDist: 220 };
 const cam = { pos: [0, 7, 42], yaw: 0, pitch: -0.1, fov: 70 * Math.PI / 180, near: 0.2, far: 3000 }; Workspace.CurrentCamera = cam;
+
+
+const explorerPanel=document.getElementById('explorerPanel'),scriptPanel=document.getElementById('scriptPanel');
+document.getElementById('explorerBtn').onclick=()=>{explorerPanel.hidden=!explorerPanel.hidden;if(!explorerPanel.hidden)renderTree()};
+document.getElementById('scriptBtn').onclick=()=>{scriptPanel.hidden=!scriptPanel.hidden};
+document.getElementById('refreshTree').onclick=renderTree;
+document.getElementById('destroySelected').onclick=()=>{if(_selectedInstance&&_selectedInstance.Parent&&_selectedInstance!==Workspace&&_selectedInstance!==game&&_selectedInstance!==Players&&_selectedInstance!==ReplicatedStorage&&_selectedInstance!==ServerStorage)_selectedInstance.Destroy();_selectedInstance=null;renderTree()};
+function renderTree(){
+ if(!_runtimeUIReady||explorerPanel.hidden)return;const host=document.getElementById('tree');host.replaceChildren();
+ const addNode=(node,depth)=>{const b=document.createElement('button');b.className='tree-node'+(node===_selectedInstance?' selected':'');b.style.paddingLeft=(4+depth*14)+'px';b.textContent=(node instanceof Part?'▰ ':'▸ ')+node.Name+' ['+node.ClassName+']';b.onclick=()=>{_selectedInstance=node;renderTree();renderProperties(node)};host.appendChild(b);for(const c of node.GetChildren())addNode(c,depth+1)};
+ addNode(game,0);if(_selectedInstance)renderProperties(_selectedInstance);else renderProperties(Workspace);
+}
+function renderProperties(node){
+ _selectedInstance=node;const host=document.getElementById('props');host.replaceChildren();
+ const field=(label,type,value,write,attrs={})=>{const l=document.createElement('label');l.textContent=label;const input=document.createElement('input');input.className='prop-input';input.type=type;if(type==='checkbox')input.checked=!!value;else input.value=value;for(const [k,v] of Object.entries(attrs))input.setAttribute(k,v);input.onchange=()=>{try{write(type==='checkbox'?input.checked:input.value)}catch(e){console.warn(e);renderProperties(node)}};host.append(l,input)};
+ field('Name','text',node.Name,v=>node.Name=v);
+ if(node instanceof Part){field('Position','text',node.Position.map(x=>x.toFixed(2)).join(', '),v=>node.Position=v.split(/[ ,]+/).map(Number));field('Size','text',node.Size.map(x=>x.toFixed(2)).join(', '),v=>node.Size=v.split(/[ ,]+/).map(Number));field('Color','color','#'+node.Color.map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join(''),v=>node.Color=[parseInt(v.slice(1,3),16)/255,parseInt(v.slice(3,5),16)/255,parseInt(v.slice(5,7),16)/255]);field('Transparency','number',node.Transparency,v=>node.Transparency=Number(v),{min:'0',max:'1',step:'.05'});field('CanCollide','checkbox',node.CanCollide,v=>node.CanCollide=v);field('Anchored','checkbox',node.Anchored,v=>node.Anchored=v);field('Material','text',node.Material,v=>node.Material=v);field('Roughness','number',node.Roughness,v=>node.Roughness=Number(v),{min:'.05',max:'1',step:'.05'});field('Metalness','number',node.Metalness,v=>node.Metalness=Number(v),{min:'0',max:'1',step:'.05'});field('Emissive','number',node.Emissive,v=>node.Emissive=Number(v),{min:'0',max:'8',step:'.1'})}
+ else{const d=document.createElement('div');d.style.cssText='grid-column:1/-1;color:#aaa;padding:5px 0';d.textContent=node.GetFullName();host.append(d)}
+}
+function _saveCblx(){
+ const esc=_escapeXML,rows=parts.map(p=>'<Part id="'+p.Id+'" parent="'+(p.Parent&&p.Parent!==Workspace?p.Parent.Name:'Workspace')+'" name="'+esc(p.Name)+'" shape="'+p.Shape+'" x="'+p.Position[0]+'" y="'+p.Position[1]+'" z="'+p.Position[2]+'" sx="'+p.Size[0]+'" sy="'+p.Size[1]+'" sz="'+p.Size[2]+'" r="'+p.Color[0]+'" g="'+p.Color[1]+'" b="'+p.Color[2]+'" yaw="'+p.Yaw+'" rough="'+p.Roughness+'" metal="'+p.Metalness+'" emissive="'+p.Emissive+'" transparency="'+p.Transparency+'" anchored="'+p.Anchored+'" collide="'+p.CanCollide+'" studs="'+p.Studs+'" material="'+esc(p.Material)+'" />').join('\n');
+ _downloadFile('CrimBloxWorld.cblx',new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n<CrimBlox version="1"><Workspace>\n'+rows+'\n</Workspace></CrimBlox>'],{type:'application/xml'}));
+}
+function _saveCbxm(){const bytes=_encodeGraph('CBXM',1,_wireNodes().filter(n=>n.Parent===Workspace||Workspace.GetDescendants().includes(n)));_downloadFile('CrimBloxWorld.cbxm',new Blob([bytes],{type:'application/octet-stream'}))}
+function _loadCblx(text){
+ const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw new Error('Invalid XML document');
+ let records=[...doc.querySelectorAll('CrimBlox Part, Workspace Part, Part')].map(e=>({name:e.getAttribute('name')||e.getAttribute('Name')||'ImportedPart',shape:e.getAttribute('shape')||e.getAttribute('Shape')||'cube',pos:[e.getAttribute('x')||e.getAttribute('X')||0,e.getAttribute('y')||e.getAttribute('Y')||1,e.getAttribute('z')||e.getAttribute('Z')||0].map(Number),size:[e.getAttribute('sx')||4,e.getAttribute('sy')||1,e.getAttribute('sz')||2].map(Number),color:[e.getAttribute('r')||.64,e.getAttribute('g')||.64,e.getAttribute('b')||.64].map(Number),yaw:Number(e.getAttribute('yaw')||0),rough:Number(e.getAttribute('rough')||.5),metal:Number(e.getAttribute('metal')||0),emissive:Number(e.getAttribute('emissive')||0),transparency:Number(e.getAttribute('transparency')||0),anchored:e.getAttribute('anchored')!=='false',collide:e.getAttribute('collide')!=='false',studs:e.getAttribute('studs')==='true',material:e.getAttribute('material')||'Plastic'}));
+ if(!records.length){records=[...doc.querySelectorAll('Item[class="Part"]')].map(item=>{const get=n=>item.querySelector('Properties > *[name="'+n+'"]'),txt=n=>get(n)?.textContent?.trim(),vec=n=>{const e=get(n);if(!e)return[0,1,0];return['X','Y','Z'].map(k=>Number(e.querySelector(k)?.textContent||0))},color=()=>{const e=get('Color');return e?['R','G','B'].map(k=>Number(e.querySelector(k)?.textContent||.64)):[.64,.64,.64]};return{name:txt('Name')||'ImportedPart',shape:'cube',pos:vec('CFrame'),size:vec('size'),color:color(),yaw:0,rough:.5,metal:0,emissive:0,transparency:Number(txt('Transparency')||0),anchored:txt('Anchored')==='true',collide:txt('CanCollide')!=='false',studs:false,material:'Plastic'}})}
+ if(!records.length)throw new Error('No Part records were found in this XML file');
+ _applyingRemote=true;try{for(const q of records){const p=new Part(q.name,q.shape.toLowerCase(),q.pos,q.size,q.color,{Yaw:q.yaw,Roughness:q.rough,Metalness:q.metal,Emissive:q.emissive,Transparency:q.transparency,Anchored:q.anchored,CanCollide:q.collide,Studs:q.studs,Material:q.material});Workspace.AddChild(p)}}finally{_applyingRemote=false}_markSceneDirty();renderTree();
+}
+document.getElementById('saveXmlBtn').onclick=_saveCblx;document.getElementById('saveBinBtn').onclick=_saveCbxm;document.getElementById('importBtn').onclick=()=>document.getElementById('sceneFile').click();
+document.getElementById('sceneFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.name.toLowerCase().endsWith('.cbxm'))_applyRecords(_decodeGraph(await f.arrayBuffer(),'CBXM'),false);else _loadCblx(await f.text());document.getElementById('scriptOutput').textContent='Imported '+f.name}catch(err){alert('CrimBlox import failed: '+err.message)}e.target.value=''};
+const _networkParam=new URLSearchParams(location.search).get('network'),_networkURL=new URLSearchParams(location.search).get('server')||'wss://crimblox-network.onrender.com';
+if(_networkParam!=='off'&&_networkURL!=='local'){_network=new NetworkClient(_networkURL);window.CrimBloxNetwork=_network;_network.start()}else{window.CrimBloxNetwork=null}
 
 // Free camera (no character or animation yet): WASD move, Q/E down/up, Shift fast, drag to look, wheel = speed.
 const keys = new Set(); let speed = 20, gpuErr = '', skyNote = 'procedural sky';
