@@ -918,6 +918,20 @@ try {
   // Skybox: one image with six faces in a 2x3 sheet (back, down / front, left / right, top). Stays on your machine.
   const file = document.getElementById('skyFile');
   const loadSky = async f => { try { await r.setSkyboxFromBlob(f); skyNote = 'custom skybox: ' + f.name; } catch (e) { gpuErr = '\n⚠ Skybox: ' + e.message; } };
+  // Bundled default cube-map sheet: back, down / front, left / right, top.
+  // Base64 is kept as a text asset for static-host compatibility; decoded only once at startup.
+  try {
+    const skyResponse = await fetch('./assets/crimblox-skybox.webp.b64', { cache: 'force-cache' });
+    if (!skyResponse.ok) throw new Error('HTTP ' + skyResponse.status);
+    const skyBase64 = (await skyResponse.text()).trim();
+    const skyBinary = atob(skyBase64);
+    const skyBytes = new Uint8Array(skyBinary.length);
+    for (let i = 0; i < skyBinary.length; i++) skyBytes[i] = skyBinary.charCodeAt(i);
+    await r.setSkyboxFromBlob(new Blob([skyBytes], { type: 'image/webp' }));
+    skyNote = 'Classic Roblox skybox';
+  } catch (e) {
+    console.warn('Bundled skybox could not be loaded; using procedural sky.', e);
+  }
   document.getElementById('skyBtn').onclick = () => file.click();
   file.onchange = () => file.files[0] && loadSky(file.files[0]);
   document.getElementById('skyReset').onclick = () => { r.setSkyboxProcedural(); skyNote = 'procedural sky'; };
