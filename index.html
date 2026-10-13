@@ -1,67 +1,777 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#191919"><title>CrimBlox Engine Lab</title>
-<style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#8fa9c0;color:#f7f7fa;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}#view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}.top{position:fixed;z-index:3;inset:0 0 auto;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(25,25,25,.6);backdrop-filter:blur(14px);border-bottom:1px solid #ffffff17}.brand{display:flex;align-items:center;gap:11px;font-size:16px;font-weight:750;letter-spacing:-.03em}.logo{width:29px;height:29px}.tag{font-size:9px;letter-spacing:.14em;color:#ef9aa5;border:1px solid #c53a493e;padding:5px 7px;border-radius:5px}.nav{display:flex;gap:6px}.btn{font:inherit;font-size:12px;color:#eee;background:transparent;border:1px solid #ffffff08;border-radius:7px;padding:9px 12px;cursor:pointer}.btn:hover,.btn.on{background:#ffffff14;border-color:#ffffff1f}.btn.red{background:#d53146;color:#fff;font-weight:650}.panel{position:fixed;z-index:2;right:20px;top:75px;width:260px;background:rgba(24,24,27,.78);border:1px solid #ffffff20;backdrop-filter:blur(14px);border-radius:12px;box-shadow:0 16px 50px #0002;overflow:hidden}.head{height:43px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #ffffff14;font-size:10px;letter-spacing:.15em;font-weight:750;color:#ddd}.row{display:flex;align-items:center;gap:10px;padding:12px 14px}.avatar{width:30px;height:30px;display:grid;place-items:center;background:linear-gradient(135deg,#db3549,#7d1f31);border-radius:7px;font-weight:800}.name{flex:1;font-size:12px;font-weight:650}.local{font-size:9px;color:#8fdfa9;letter-spacing:.1em}.foot{padding:10px 14px;border-top:1px solid #ffffff10;color:#898992;font-size:9px;letter-spacing:.1em}.settings{padding-bottom:14px}.setting{padding:13px 14px 0}.label{display:flex;justify-content:space-between;font-size:12px;color:#ddd;margin-bottom:8px}.label output{color:#fff;font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:#d53146}.check{display:flex;justify-content:space-between;padding:14px;color:#ddd;font-size:12px}.check input{accent-color:#d53146}.help{padding:0 14px;color:#9b9ba3;font-size:10px;line-height:1.45}.status{position:fixed;z-index:2;top:74px;left:18px;padding:9px 11px;border:1px solid #ffffff17;border-radius:8px;background:#171719a8;backdrop-filter:blur(12px);font-size:11px;color:#e7e7ea}.led{display:inline-block;width:7px;height:7px;border-radius:50%;background:#e4b15f;margin-right:7px}.stats{position:fixed;top:116px;left:18px;padding:8px 10px;border:1px solid #ffffff15;border-radius:7px;background:#1717199c;font-size:10px;color:#ddd}.hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:9px 12px;display:flex;align-items:center;gap:7px;white-space:nowrap;border:1px solid #ffffff19;border-radius:9px;background:#171719a8;backdrop-filter:blur(12px);font-size:10px;color:#ddd}.key{padding:4px 6px;border:1px solid #ffffff26;border-bottom-width:2px;border-radius:4px;font-size:9px;font-weight:800}.sep{color:#777;margin:0 2px}.hidden{display:none!important}#error{display:none;position:fixed;z-index:9;left:50%;top:50%;transform:translate(-50%,-50%);width:min(500px,calc(100vw - 30px));padding:20px;border-radius:13px;background:#24191c;border:1px solid #e05a6c80;box-shadow:0 15px 55px #0005}#error p{font-size:12px;color:#e1c5ca;line-height:1.6}#error pre{font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;color:#f2a3ae}@media(max-width:650px){.top{padding:0 10px}.tag{display:none}.panel{right:10px;top:67px;width:220px}.status{left:10px;top:67px}.stats{left:10px;top:109px}.hint{bottom:9px;font-size:9px;gap:5px;padding:8px}.btn{padding:8px}}
-</style></head><body>
-<canvas id="view" aria-label="CrimBlox 3D world"></canvas>
-<header class="top"><div class="brand"><svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><g transform="rotate(-12 20 20)"><path d="M5 5H35V35H5Z M15 15H25V25H15Z" fill="#fff" fill-rule="evenodd"/></g></svg><span>CrimBlox</span><span class="tag">ENGINE LAB</span></div><nav class="nav"><button class="btn on" id="playersBtn">Players</button><button class="btn" id="settingsBtn">Settings</button><button class="btn red" id="resetBtn">Reset view</button></nav></header>
-<section class="panel" id="leader"><div class="head"><span>PLAYERS</span><span style="color:#83d9a2">● LIVE</span></div><div class="row"><div class="avatar">C</div><div class="name">CrimBloxPlayer</div><span class="local">YOU</span></div><div class="foot">LOCAL TEST WORLD · 1 PLAYER</div></section>
-<section class="panel settings hidden" id="settings"><div class="head"><span>RENDER SETTINGS</span><span>v0.1</span></div><div class="setting"><div class="label"><label for="ambient">Ambient fill</label><output id="ambientOut">0.58</output></div><input id="ambient" type="range" min=".15" max="1.15" step=".01" value=".58"></div><div class="setting"><div class="label"><label for="sun">Sun intensity</label><output id="sunOut">1.20</output></div><input id="sun" type="range" min=".3" max="2" step=".01" value="1.2"></div><div class="check"><label for="neon">Neon emissive boost</label><input id="neon" type="checkbox" checked></div><div class="help">Raw WebGPU · shared primitive meshes · batched instancing · live sun/ambient controls.</div></section>
-<div class="status"><span class="led" id="led"></span><span id="status">Starting WebGPU…</span></div><div class="stats"><span id="fps">--</span> FPS　/　<span id="parts">0</span> parts　/　<span id="batches">0</span> batches</div>
-<div class="hint"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span><span>move</span><span class="sep">·</span><span class="key">SPACE</span><span>jump</span><span class="sep">·</span><span>drag to orbit</span><span class="sep">·</span><span>wheel to zoom</span></div>
-<div id="error"><h3>WebGPU couldn't start</h3><p>This is a normal browser website. It needs WebGPU support in Chrome on a compatible GPU.</p><pre id="errorText"></pre><button class="btn" onclick="location.reload()">Reload</button></div>
-<script>
-'use strict';
-const canvas=document.querySelector('#view'),stat=document.querySelector('#status'),led=document.querySelector('#led'),err=document.querySelector('#error'),errorText=document.querySelector('#errorText');
-let device,ctx,pipeline,bg,frameBuffer,vertexBuffer,indexBuffer,instanceBuffer,depthTex,format,meshRanges={},groups={},parts=[];
-let ambient=.58,sun=1.2,neon=true,yaw=.65,pitch=.42,distance=17,drag=false,px=0,py=0,last=performance.now(),fcount=0,fstart=last;const keys=new Set();
-function status(s,good){stat.textContent=s;led.style.background=good?'#6eda9a':'#e4b15f';}
-function fail(e){console.error(e);status('WebGPU failed',false);errorText.textContent=e&&e.stack||String(e);err.style.display='block';}
-document.querySelector('#playersBtn').onclick=e=>{document.querySelector('#leader').classList.toggle('hidden');e.currentTarget.classList.toggle('on')};
-document.querySelector('#settingsBtn').onclick=e=>{document.querySelector('#settings').classList.toggle('hidden');e.currentTarget.classList.toggle('on')};
-document.querySelector('#resetBtn').onclick=()=>{yaw=.65;pitch=.42;distance=17;player.x=0;player.z=3;player.y=0;player.vy=0};
-document.querySelector('#ambient').oninput=e=>{ambient=+e.target.value;document.querySelector('#ambientOut').value=ambient.toFixed(2)};
-document.querySelector('#sun').oninput=e=>{sun=+e.target.value;document.querySelector('#sunOut').value=sun.toFixed(2)};
-document.querySelector('#neon').onchange=e=>neon=e.target.checked;
-window.addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)&&!e.target.closest('button,input'))e.preventDefault();keys.add(e.code)});window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>{keys.clear();drag=false});
-canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',e=>{if(!drag)return;yaw-=(e.clientX-px)*.006;pitch=Math.max(.08,Math.min(1.1,pitch+(e.clientY-py)*.004));px=e.clientX;py=e.clientY});canvas.addEventListener('pointerup',()=>drag=false);canvas.addEventListener('pointercancel',()=>drag=false);canvas.addEventListener('wheel',e=>{e.preventDefault();distance=Math.max(6,Math.min(34,distance+e.deltaY*.015))},{passive:false});
-function add(shape,x,y,z,sx,sy,sz,color,rot=0,em=0,solid=true){parts.push({shape,p:[x,y,z],s:[sx,sy,sz],c:color,r:rot,e:em,solid})}
-function build(){add('cube',0,-.55,0,48,.8,48,[.37,.52,.38],0,0,false);add('cube',0,-.12,0,11,.12,11,[.44,.58,.43],0,0,false);const pal=[[.76,.19,.22],[.17,.48,.76],[.94,.65,.22],[.58,.36,.79],[.18,.67,.56],[.85,.83,.72],[.23,.3,.42]];
-for(let x=-12;x<=12;x+=2)for(let z=-12;z<=12;z+=2){if(Math.abs(x)<4&&Math.abs(z)<4)continue;const h=.4+(Math.abs(x*7+z*13)%5)*.34;add('cube',x,h/2-.06,z,1.85,h,1.85,pal[Math.abs(x*3+z*5)%pal.length])}
-for(let i=0;i<11;i++){const h=1.5+(i%4)*.7;add(i%3===0?'cylinder':'cube',-6+i*1.2,h/2,-5-(i%2)*1.5,.75,h,.75,[.82,.82,.78],i*.09)}
-add('cube',-3,1.7,-2,1.2,3.4,1.2,[.91,.18,.24]);add('cube',3,1.2,-4,1.1,2.4,1.1,[.21,.57,.9]);add('wedge',-4,.55,3,2,1.2,2,[.98,.62,.18],.3);add('sphere',4,1,2,1.3,1.3,1.3,[1,.24,.35],0,1);add('cylinder',1,.6,4,1,.9,1,[.99,.83,.54],.2);add('cube',-1,1.35,-5,1.5,2.7,1.5,[.37,.38,.43],0,1);
-for(let i=0;i<90;i++){const x=(i*37)%37-18,z=(i*23)%37-18;if(Math.abs(x)<7&&Math.abs(z)<7)continue;add(i%5===0?'sphere':i%4===0?'cylinder':'cube',x,.25+(i%4)*.28,z,.22+(i%3)*.16,.25+(i%5)*.12,.22+(i%3)*.16,pal[i%pal.length],(i%7)*.2,i%11===0?1:0,false)}
-for(let i=0;i<8;i++){const a=i*Math.PI/4;add('cube',Math.cos(a)*8,.2,Math.sin(a)*8,2.2,.4,1.7,[.66,.7,.73],a)}}
-const player={x:0,z:3,y:0,vy:0,ground:true};
-function move(dt){const f=(keys.has('KeyW')?1:0)-(keys.has('KeyS')?1:0),s=(keys.has('KeyD')?1:0)-(keys.has('KeyA')?1:0);let vx=0,vz=0;if(f||s){const l=Math.hypot(f,s);vx=(Math.sin(yaw)*f+Math.cos(yaw)*s)/l*7;vz=(Math.cos(yaw)*f-Math.sin(yaw)*s)/l*7}
-let nx=player.x+vx*dt,nz=player.z+vz*dt;for(const p of parts){if(!p.solid)continue;const dx=nx-p.p[0],dz=nz-p.p[2],ex=p.s[0]/2+.32,ez=p.s[2]/2+.32;if(Math.abs(dx)<ex&&Math.abs(dz)<ez&&player.y<p.p[1]+p.s[1]/2){if(Math.abs(dx/ex)>Math.abs(dz/ez))nx=p.p[0]+Math.sign(dx||1)*ex;else nz=p.p[2]+Math.sign(dz||1)*ez}}
-player.x=nx;player.z=nz;if(keys.has('Space')&&player.ground){player.vy=8;player.ground=false}player.vy-=22*dt;player.y+=player.vy*dt;if(player.y<=0){player.y=0;player.vy=0;player.ground=true}}
-function avatar(){const x=player.x,y=player.y,z=player.z;return[{shape:'cube',p:[x,y+1,z],s:[.68,.82,.34],c:[.75,.11,.18],r:yaw,e:0},{shape:'sphere',p:[x,y+1.62,z],s:[.43,.43,.43],c:[.94,.75,.56],r:0,e:0},{shape:'cube',p:[x-.49,y+.99,z],s:[.22,.7,.24],c:[.86,.86,.82],r:yaw,e:0},{shape:'cube',p:[x+.49,y+.99,z],s:[.22,.7,.24],c:[.86,.86,.82],r:yaw,e:0},{shape:'cube',p:[x-.18,y+.37,z],s:[.24,.62,.28],c:[.18,.25,.38],r:yaw,e:0},{shape:'cube',p:[x+.18,y+.37,z],s:[.24,.62,.28],c:[.18,.25,.38],r:yaw,e:0}]}
-function cube(){const v=[],ix=[],fs=[[[0,0,1],[-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]],[[0,0,-1],[.5,-.5,-.5],[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5]],[[1,0,0],[.5,-.5,.5],[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5]],[[-1,0,0],[-.5,-.5,-.5],[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5]],[[0,1,0],[-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]],[[0,-1,0],[-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]]];for(const f of fs){const k=v.length/6;for(let j=1;j<=4;j++)v.push(...f[j],...f[0]);ix.push(k,k+1,k+2,k,k+2,k+3)}return{v,ix}}
-function sphere(){const v=[],ix=[],lat=14,lon=20;for(let y=0;y<=lat;y++){const t=y*Math.PI/lat;for(let x=0;x<=lon;x++){const p=x*2*Math.PI/lon,nx=-Math.cos(p)*Math.sin(t),ny=Math.cos(t),nz=Math.sin(p)*Math.sin(t);v.push(nx*.5,ny*.5,nz*.5,nx,ny,nz)}}for(let y=0;y<lat;y++)for(let x=0;x<lon;x++){const a=y*(lon+1)+x,b=a+lon+1;ix.push(a,b,a+1,b,b+1,a+1)}return{v,ix}}
-function cylinder(){const v=[],ix=[],n=20;for(let i=0;i<=n;i++){const a=i*2*Math.PI/n,c=Math.cos(a),s=Math.sin(a);v.push(c*.5,-.5,s*.5,c,0,s,c*.5,.5,s*.5,c,0,s)}for(let i=0;i<n;i++){const a=i*2,b=a+2;ix.push(a,a+1,b,a+1,b+1,b)}return{v,ix}}
-function wedge(){const c=cube(),v=c.v,ix=c.ix;for(let i=0;i<v.length;i+=6){const x=v[i],y=v[i+1],z=v[i+2];if(y>0&&z<0){v[i+1]=-.5;v[i+2]=z}}return{v,ix}}
-function createMesh(){const m={cube:cube(),cylinder:cylinder(),sphere:sphere(),wedge:wedge()},verts=[],inds=[];for(const n of Object.keys(m)){const mesh=m[n],base=verts.length/6;meshRanges[n]={first:inds.length,count:mesh.ix.length};verts.push(...mesh.v);for(const i of mesh.ix)inds.push(i+base)}return{v:new Float32Array(verts),i:new Uint32Array(inds)}}
-function persp(f,a,n,far){const q=1/Math.tan(f/2),o=new Float32Array(16);o[0]=q/a;o[5]=q;o[10]=far/(n-far);o[11]=-1;o[14]=far*n/(n-far);return o}
-function look(eye,c){let z=norm(sub(eye,c)),x=norm(cross([0,1,0],z)),y=cross(z,x),o=new Float32Array(16);o[0]=x[0];o[1]=y[0];o[2]=z[0];o[4]=x[1];o[5]=y[1];o[6]=z[1];o[8]=x[2];o[9]=y[2];o[10]=z[2];o[12]=-dot(x,eye);o[13]=-dot(y,eye);o[14]=-dot(z,eye);o[15]=1;return o}
-function norm(a){const l=Math.hypot(...a)||1;return a.map(v=>v/l)}function sub(a,b){return[a[0]-b[0],a[1]-b[1],a[2]-b[2]]}function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]}function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]}
-function mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return o}
-const wgsl=[
-'struct Frame { vp: mat4x4<f32>, camera: vec4<f32>, sunDir: vec4<f32>, sunColor: vec4<f32>, ambient: vec4<f32> };',
-'@group(0) @binding(0) var<uniform> f: Frame;',
-'struct In { @location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) posYaw: vec4<f32>, @location(3) scale: vec4<f32>, @location(4) colorEm: vec4<f32> };',
-'struct Out { @builtin(position) clip: vec4<f32>, @location(0) world: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) color: vec3<f32>, @location(3) em: f32 };',
-'@vertex fn vs(i: In) -> Out { let c=cos(i.posYaw.w); let s=sin(i.posYaw.w); let p=i.pos*i.scale.xyz; let r=vec3<f32>(p.x*c+p.z*s,p.y,-p.x*s+p.z*c); let w=r+i.posYaw.xyz; let ns=i.normal/max(i.scale.xyz,vec3<f32>(0.0001)); let n=normalize(vec3<f32>(ns.x*c+ns.z*s,ns.y,-ns.x*s+ns.z*c)); var o:Out; o.clip=f.vp*vec4<f32>(w,1.0); o.world=w; o.normal=n; o.color=i.colorEm.rgb; o.em=i.colorEm.a; return o; }',
-'@fragment fn fs(i:Out)->@location(0) vec4<f32>{let n=normalize(i.normal);let l=normalize(-f.sunDir.xyz);let d=max(dot(n,l),0.0);let direct=f.sunColor.rgb*f.sunColor.a*d;let v=normalize(f.camera.xyz-i.world);let h=normalize(l+v);let spec=pow(max(dot(n,h),0.0),32.0)*0.12;let base=i.color*(f.ambient.rgb*f.ambient.a+direct)+vec3<f32>(spec);return vec4<f32>(base+i.color*i.em,1.0);}'
-].join('\n');
-async function init(){if(!navigator.gpu)throw Error('navigator.gpu is unavailable. Use an up-to-date Chrome build with WebGPU enabled.');const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('No WebGPU adapter was supplied by Chrome.');device=await adapter.requestDevice();device.lost.then(i=>fail(Error(i.message||'GPU device lost')));ctx=canvas.getContext('webgpu');format=navigator.gpu.getPreferredCanvasFormat();ctx.configure({device,format,alphaMode:'opaque'});
-const mesh=createMesh();vertexBuffer=device.createBuffer({size:mesh.v.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(vertexBuffer,0,mesh.v);indexBuffer=device.createBuffer({size:mesh.i.byteLength,usage:GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(indexBuffer,0,mesh.i);instanceBuffer=device.createBuffer({size:2*1024*1024,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});frameBuffer=device.createBuffer({size:128,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
-const mod=device.createShaderModule({code:wgsl}),bgl=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}}]}),pl=device.createPipelineLayout({bindGroupLayouts:[bgl]});
-pipeline=device.createRenderPipeline({layout:pl,vertex:{module:mod,entryPoint:'vs',buffers:[{arrayStride:24,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'}]},{arrayStride:48,stepMode:'instance',attributes:[{shaderLocation:2,offset:0,format:'float32x4'},{shaderLocation:3,offset:16,format:'float32x4'},{shaderLocation:4,offset:32,format:'float32x4'}]}]},fragment:{module:mod,entryPoint:'fs',targets:[{format}]},primitive:{topology:'triangle-list',cullMode:'back',frontFace:'ccw'},depthStencil:{format:'depth24plus',depthWriteEnabled:true,depthCompare:'less'}});
-bg=device.createBindGroup({layout:bgl,entries:[{binding:0,resource:{buffer:frameBuffer}}]});resize();status('WebGPU ready · '+format,true);requestAnimationFrame(frame)}
-function resize(){const d=Math.min(devicePixelRatio||1,1.7),w=Math.max(1,Math.floor(innerWidth*d)),h=Math.max(1,Math.floor(innerHeight*d));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;if(device){ctx.configure({device,format,alphaMode:'opaque'});if(depthTex)depthTex.destroy();depthTex=device.createTexture({size:[w,h,1],format:'depth24plus',usage:GPUTextureUsage.RENDER_ATTACHMENT})}}}
-function instances(){const all=parts.concat(avatar()),g={cube:[],sphere:[],cylinder:[],wedge:[]};for(const p of all){g[p.shape].push([p.p[0],p.p[1],p.p[2],p.r||0,p.s[0],p.s[1],p.s[2],1,p.c[0],p.c[1],p.c[2],p.e?(neon?1.2:.12):0])}let off=0;const data=new Float32Array(all.length*12);for(const n of ['cube','cylinder','sphere','wedge']){const start=off;for(const r of g[n]){data.set(r,off);off+=12}groups[n]={offset:start*4,count:g[n].length,size:Math.max(48,g[n].length*48)}}device.queue.writeBuffer(instanceBuffer,0,data);document.querySelector('#parts').textContent=all.length;document.querySelector('#batches').textContent=Object.values(groups).filter(g=>g.count).length}
-function frame(now){if(!device)return;const dt=Math.min((now-last)/1000,.05);last=now;move(dt);resize();const tar=[player.x,player.y+.8,player.z],h=distance*Math.cos(pitch),eye=[tar[0]+Math.sin(yaw)*h,tar[1]+Math.sin(pitch)*distance,tar[2]+Math.cos(yaw)*h],vp=mul(persp(1.04,canvas.width/canvas.height,.1,160),look(eye,tar)),u=new Float32Array(32);u.set(vp,0);u.set([eye[0],eye[1],eye[2],1],16);u.set([-.42,-.88,-.3,0],20);u.set([1,.91,.72,sun],24);u.set([.91,.93,1,ambient],28);device.queue.writeBuffer(frameBuffer,0,u);instances();if(!depthTex)depthTex=device.createTexture({size:[canvas.width,canvas.height,1],format:'depth24plus',usage:GPUTextureUsage.RENDER_ATTACHMENT});
-const enc=device.createCommandEncoder(),p=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),clearValue:{r:.48,g:.62,b:.73,a:1},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depthTex.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});p.setPipeline(pipeline);p.setBindGroup(0,bg);p.setVertexBuffer(0,vertexBuffer);p.setIndexBuffer(indexBuffer,'uint32');for(const n of ['cube','cylinder','sphere','wedge']){const b=groups[n],m=meshRanges[n];if(b&&b.count){p.setVertexBuffer(1,instanceBuffer,b.offset,b.size);p.drawIndexed(m.count,b.count,m.first,0,0)}}p.end();device.queue.submit([enc.finish()]);fcount++;if(now-fstart>600){document.querySelector('#fps').textContent=Math.round(fcount*1000/(now-fstart));fcount=0;fstart=now}requestAnimationFrame(frame)}
-window.addEventListener('resize',resize);build();init().catch(fail);
+<html lang="en"><head><meta charset="utf-8"><title>Crimson Web Renderer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.2 "Source Sans Pro","Segoe UI",system-ui,Arial,sans-serif;color:#fff;user-select:none}
+canvas{display:block;width:100%;height:100%}
+#bar{position:fixed;left:0;right:0;top:0;height:36px;display:flex;align-items:center;padding:0 6px;background:rgba(25,25,25,0.6)}
+#bar svg{width:24px;height:24px;margin:0 10px 0 4px}
+.tb{background:none;border:0;border-radius:0;color:#fff;font:inherit;padding:0 14px;height:36px;cursor:pointer;opacity:.85}
+.tb:hover{opacity:1;background:rgba(255,255,255,.12)}
+#hud{position:fixed;left:8px;bottom:8px;white-space:pre;text-shadow:0 1px 2px #000;opacity:.9}
+#bar{overflow-x:auto;white-space:nowrap}#bar .tb{flex:0 0 auto}
+.toolpanel{position:fixed;z-index:20;top:44px;right:8px;width:min(380px,calc(100vw - 16px));max-height:calc(100vh - 58px);overflow:auto;background:rgba(25,25,25,.94);border:1px solid rgba(255,255,255,.15);box-shadow:0 12px 36px #0008;color:#eee;padding:12px;font:12px/1.4 system-ui,sans-serif}
+.toolpanel h3{font-size:12px;letter-spacing:.08em;margin:0 0 10px;padding-bottom:9px;border-bottom:1px solid #ffffff1a}
+.toolpanel button,.toolpanel input,.toolpanel select,.toolpanel textarea{font:inherit;color:#eee;background:#242424;border:1px solid #ffffff2b;border-radius:3px;padding:6px}.toolpanel button{cursor:pointer}.toolpanel button:hover{background:#3a3a3a}
+.toolpanel textarea{display:block;width:100%;height:230px;resize:vertical;font:12px/1.5 ui-monospace,monospace;tab-size:2}
+#tree{max-height:34vh;overflow:auto;border-bottom:1px solid #ffffff1a;padding-bottom:8px}.tree-node{display:block;width:100%;text-align:left;border:0!important;background:transparent!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 4px!important}.tree-node.selected{background:#ffffff1c!important}
+#props{display:grid;grid-template-columns:94px minmax(0,1fr);gap:6px 8px;margin-top:10px;align-items:center}#props label{color:#aaa}.prop-input{width:100%;min-width:0}
+.panel-actions{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}#scriptOutput{white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto;color:#bfe9c9;font:11px/1.4 ui-monospace,monospace}#scriptState{color:#bbb;font-size:11px;white-space:pre-wrap}[hidden]{display:none!important}
+</style></head>
+<body><canvas id="c"></canvas>
+<div id="bar"><svg viewBox="0 0 24 24" aria-label="CrimBlox"><rect x="5" y="5" width="14" height="14" transform="rotate(-14 12 12)" fill="none" stroke="#cfcfcf" stroke-width="4" stroke-dasharray="42 14"/></svg>
+<button class="tb" id="explorerBtn">Explorer</button><button class="tb" id="scriptBtn">Script Lab</button><button class="tb" id="importBtn">Import Scene…</button><button class="tb" id="saveXmlBtn">Save .cblx</button><button class="tb" id="saveBinBtn">Save .cbxm</button><button class="tb" id="skyBtn">Load Skybox…</button><button class="tb" id="skyReset">Procedural Sky</button><input id="skyFile" type="file" accept="image/*" hidden><input id="sceneFile" type="file" accept=".cblx,.cbxm,.rbxlx,.xml" hidden></div>
+<div id="hud">Loading…</div>
+<section id="explorerPanel" class="toolpanel" hidden><h3>WORKSPACE EXPLORER</h3><div id="tree"></div><div id="props"></div><div class="panel-actions"><button id="destroySelected">Destroy selected</button><button id="refreshTree">Refresh tree</button></div></section>
+<section id="scriptPanel" class="toolpanel" hidden><h3>CRIMBLOX SCRIPT LAB · SAFE LUA SUBSET</h3><textarea id="scriptCode" spellcheck="false">-- CrimBlox Lua-style starter script
+local part = Instance.new("Part")
+part.Name = "CrimsonTestPart"
+part.Position = Vector3.new(0, 4, -3)
+part.Size = Vector3.new(4, 1, 4)
+part.Color = Color3.fromRGB(196, 40, 28)
+part.Material = Enum.Material.Neon
+part.Parent = workspace
+print("Created", part.Name)</textarea><div class="panel-actions"><button id="runScriptBtn">Run script</button><button id="resetScriptBtn">Reset example</button><button id="clearOutputBtn">Clear output</button></div><div id="scriptState">Supports Instance.new, property assignments, print, FindFirstChild, Destroy, and basic Vector3/Color3/CFrame expressions. Not full Luau yet.</div><pre id="scriptOutput"></pre></section>
+<script type="module">
+// Minimal column-major math (right-handed, WebGPU depth 0..1).
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0; for (let k = 0; k < 4; k++) s += a[k*4+r] * b[c*4+k];
+    o[c*4+r] = s;
+  }
+  return o;
+}
+function perspective(fovY, aspect, n, f) {
+  const t = 1 / Math.tan(fovY / 2), m = new Float32Array(16);
+  m[0] = t / aspect; m[5] = t; m[10] = f / (n - f); m[11] = -1; m[14] = f * n / (n - f);
+  return m;
+}
+// View z in [-near, -far] maps to depth [0, 1].
+function ortho(l, r, b, t, n, f) {
+  const m = new Float32Array(16);
+  m[0] = 2/(r-l); m[5] = 2/(t-b); m[10] = 1/(n-f);
+  m[12] = -(r+l)/(r-l); m[13] = -(t+b)/(t-b); m[14] = n/(n-f); m[15] = 1;
+  return m;
+}
+function lookAt(eye, target, up) {
+  const f = norm(sub(target, eye)), s = norm(cross(f, up)), u = cross(s, f);
+  return new Float32Array([s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0,
+    -dot(s,eye), -dot(u,eye), dot(f,eye), 1]);
+}
+const xform = (m, p) => [
+  m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],
+  m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],
+  m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];
+// T * Ry(yaw) * S
+function modelMatrix(p, s, yaw) {
+  const c = Math.cos(yaw), n = Math.sin(yaw);
+  return new Float32Array([c*s[0],0,-n*s[0],0, 0,s[1],0,0, n*s[2],0,c*s[2],0, p[0],p[1],p[2],1]);
+}
+
+// Shared primitive pool: one copy of each shape in a single vertex/index buffer.
+// Vertex layout: position(3) + normal(3). Unit shapes centered at the origin.
+
+const avg = p => p.reduce((s, q) => [s[0]+q[0]/p.length, s[1]+q[1]/p.length, s[2]+q[2]/p.length], [0,0,0]);
+
+class Mesh {
+  v = []; i = [];
+  // Flat convex polygon; `c` is an interior point used to orient the face outward.
+  flat(pts, c) {
+    let n = norm(cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])));
+    if (dot(n, sub(avg(pts), c)) < 0) { pts = [...pts].reverse(); n = n.map(x => -x); }
+    const b = this.v.length / 6;
+    pts.forEach(p => this.v.push(...p, ...n));
+    for (let k = 1; k < pts.length - 1; k++) this.i.push(b, b+k, b+k+1);
+  }
+  // Make triangle winding agree with the supplied vertex normals.
+  fix(from) {
+    const P = j => this.v.slice(j*6, j*6+3);
+    for (let k = from; k < this.i.length; k += 3) {
+      const [a, b, c] = [this.i[k], this.i[k+1], this.i[k+2]];
+      if (dot(cross(sub(P(b), P(a)), sub(P(c), P(a))), this.v.slice(a*6+3, a*6+6)) < 0) {
+        this.i[k+1] = c; this.i[k+2] = b;
+      }
+    }
+  }
+}
+
+function cube() {
+  const m = new Mesh();
+  for (let a = 0; a < 3; a++) for (const s of [-1, 1]) {
+    const u = (a+1) % 3, w = (a+2) % 3;
+    m.flat([[-1,-1],[1,-1],[1,1],[-1,1]].map(([x, y]) => { const p = [0,0,0]; p[a] = s*.5; p[u] = x*.5; p[w] = y*.5; return p; }), [0,0,0]);
+  }
+  return m;
+}
+function wedge() { // slope rises toward +z; vertical face at +z
+  const m = new Mesh(), c = [0,-.1,.1];
+  for (const x of [-.5, .5]) m.flat([[x,-.5,-.5],[x,-.5,.5],[x,.5,.5]], c);
+  m.flat([[-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]], c);
+  m.flat([[-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]], c);
+  m.flat([[-.5,-.5,-.5],[.5,-.5,-.5],[.5,.5,.5],[-.5,.5,.5]], c);
+  return m;
+}
+function sphere(R = 16, S = 24) {
+  const m = new Mesh();
+  for (let i = 0; i <= R; i++) for (let j = 0; j <= S; j++) {
+    const t = i/R*Math.PI, p = j/S*Math.PI*2;
+    const n = [Math.sin(t)*Math.cos(p), Math.cos(t), Math.sin(t)*Math.sin(p)];
+    m.v.push(n[0]*.5, n[1]*.5, n[2]*.5, ...n);
+  }
+  for (let i = 0; i < R; i++) for (let j = 0; j < S; j++) {
+    const a = i*(S+1)+j, b = a+S+1; m.i.push(a, b, a+1, a+1, b, b+1);
+  }
+  m.fix(0); return m;
+}
+function cylinder(S = 24) {
+  const m = new Mesh();
+  for (let j = 0; j <= S; j++) {
+    const p = j/S*Math.PI*2, x = Math.cos(p), z = Math.sin(p);
+    m.v.push(x*.5,.5,z*.5, x,0,z, x*.5,-.5,z*.5, x,0,z);
+  }
+  for (let j = 0; j < S; j++) { const a = j*2; m.i.push(a, a+1, a+2, a+2, a+1, a+3); }
+  m.fix(0);
+  for (const y of [.5, -.5]) {
+    const ring = []; for (let j = 0; j < S; j++) { const p = j/S*Math.PI*2; ring.push([Math.cos(p)*.5, y, Math.sin(p)*.5]); }
+    m.flat(ring, [0,0,0]);
+  }
+  return m;
+}
+
+function cone(S = 24) { // base radius .5 at y=-.5, apex at y=.5
+  const m = new Mesh();
+  for (let j = 0; j < S; j++) {
+    const a0 = j/S*Math.PI*2, a1 = (j+1)/S*Math.PI*2, am = (a0+a1)/2;
+    const nrm = a => norm([Math.cos(a), 0.5, Math.sin(a)]);
+    m.v.push(Math.cos(a0)*.5,-.5,Math.sin(a0)*.5, ...nrm(a0), Math.cos(a1)*.5,-.5,Math.sin(a1)*.5, ...nrm(a1), 0,.5,0, ...nrm(am));
+    m.i.push(j*3, j*3+1, j*3+2);
+  }
+  m.fix(0);
+  const ring = []; for (let j = 0; j < S; j++) { const p = j/S*Math.PI*2; ring.push([Math.cos(p)*.5, -.5, Math.sin(p)*.5]); }
+  m.flat(ring, [0, 0, 0]); return m;
+}
+
+function buildGeometry() {
+  const meshes = { cube: cube(), sphere: sphere(), cylinder: cylinder(), wedge: wedge(), cone: cone() };
+  const verts = [], idx = [], shapes = {};
+  for (const [name, m] of Object.entries(meshes)) {
+    shapes[name] = { base: verts.length / 6, first: idx.length, count: m.i.length };
+    verts.push(...m.v); idx.push(...m.i);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx), shapes };
+}
+
+// WGSL sources for the FigureBlox-style look: HDR PBR, 3 sun cascades with PCF, procedural or six-face skybox, haze, soft bloom.
+const SCENE = /* wgsl */`
+const PI = 3.14159265;
+const SKY_AMB = vec3f(0.40, 0.60, 0.95);
+const GND_AMB = vec3f(0.30, 0.27, 0.22);
+struct Frame {
+  viewProj: mat4x4f,
+  cascadeVP: array<mat4x4f, 3>,
+  splits: vec4f,
+  camPos: vec4f, camRight: vec4f, camUp: vec4f, camFwd: vec4f,
+  proj: vec4f,            // tanHalfFov, aspect, time, 1/shadowSize
+  sunDir: vec4f,          // unit vector toward the sun
+  sunColor: vec4f,        // linear HDR radiance
+  haze: vec4f,            // x = haze density, y = skybox mode (0 procedural, 1 custom six-face texture)
+}
+struct Inst { model: mat4x4f, color: vec4f, params: vec4f } // params: roughness, metalness, emissive, studs flag
+@group(0) @binding(0) var<uniform> F: Frame;
+@group(0) @binding(1) var<storage, read> inst: array<Inst>;
+@group(0) @binding(2) var shadowTex: texture_depth_2d_array;
+@group(0) @binding(3) var shadowSamp: sampler_comparison;
+@group(0) @binding(4) var skyTex: texture_2d_array<f32>;   // layers: back, down, front, left, right, top
+@group(0) @binding(5) var skySamp: sampler;
+
+// ---------------- sky ----------------
+fn hash2(p: vec2u) -> f32 {
+  var h = p.x * 374761393u + p.y * 668265263u;
+  h = (h ^ (h >> 13u)) * 1274126177u;
+  return f32(h ^ (h >> 16u)) / 4294967295.0;
+}
+fn vnoise(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  let ip = vec2i(i);
+  let a = hash2(bitcast<vec2u>(ip));
+  let b = hash2(bitcast<vec2u>(ip + vec2i(1, 0)));
+  let c = hash2(bitcast<vec2u>(ip + vec2i(0, 1)));
+  let d = hash2(bitcast<vec2u>(ip + vec2i(1, 1)));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+fn fbm(p: vec2f) -> f32 {
+  var a = 0.5;
+  var s = 0.0;
+  var q = p;
+  for (var i = 0; i < 5; i++) { s += a * vnoise(q); q = q * 2.03 + vec2f(17.0, 9.0); a *= 0.5; }
+  return s / 0.96875;
+}
+
+// Soft blue gradient with a bright, hazy horizon band (also used for ambient, reflections and distance haze).
+fn skyGradient(d: vec3f) -> vec3f {
+  let e = d.y;
+  let zen = pow(vec3f(0.36, 0.58, 0.86), vec3f(2.2));
+  let mid = pow(vec3f(0.45, 0.72, 0.93), vec3f(2.2));
+  let hor = pow(vec3f(0.80, 0.91, 0.95), vec3f(2.2));
+  let low = pow(vec3f(0.50, 0.80, 0.94), vec3f(2.2));
+  var c = mix(hor, mid, smoothstep(0.0, 0.18, e));
+  c = mix(c, zen, smoothstep(0.1, 0.9, e));
+  return mix(c, low, smoothstep(0.0, 0.5, -e));
+}
+// Procedural sky: gradient + wispy streaks near the horizon, puffs overhead, soft sun.
+fn skyProc(d: vec3f) -> vec3f {
+  var c = skyGradient(d);
+  let up = max(d.y, 0.0);
+  let p = d.xz / (up + 0.18);
+  let n = fbm(p * vec2f(0.55, 1.4) + vec2f(3.0, 7.0));
+  let cov = smoothstep(0.50, 0.78, n) * smoothstep(0.0, 0.12, d.y);
+  let lit = clamp(0.55 + 0.45 * dot(normalize(vec3f(d.x, up + 0.3, d.z)), F.sunDir.xyz), 0.0, 1.0);
+  let cloud = mix(pow(vec3f(0.72, 0.80, 0.88), vec3f(2.2)), pow(vec3f(0.97, 0.98, 0.98), vec3f(2.2)), lit);
+  c = mix(c, cloud, cov * 0.9);
+  let s = max(dot(d, F.sunDir.xyz), 0.0);
+  return c + F.sunColor.rgb * (pow(s, 900.0) * 0.8 + pow(s, 12.0) * 0.03);
+}
+// Six-face skybox lookup. Faces follow the sheet order: back, down, front, left, right, top.
+// Front is -Z (the way the camera looks at yaw 0), right is +X, up is +Y.
+fn skyTexColor(d: vec3f) -> vec3f {
+  let a = abs(d);
+  var layer = 0;
+  var uv = vec2f(0.0);
+  if (a.z >= a.x && a.z >= a.y) {
+    if (d.z < 0.0) { layer = 2; uv = vec2f(d.x / a.z, -d.y / a.z); }
+    else { layer = 0; uv = vec2f(-d.x / a.z, -d.y / a.z); }
+  } else if (a.x >= a.y) {
+    if (d.x > 0.0) { layer = 4; uv = vec2f(d.z / a.x, -d.y / a.x); }
+    else { layer = 3; uv = vec2f(-d.z / a.x, -d.y / a.x); }
+  } else {
+    if (d.y > 0.0) { layer = 5; uv = vec2f(d.x / a.y, -d.z / a.y); }
+    else { layer = 1; uv = vec2f(d.x / a.y, d.z / a.y); }
+  }
+  let t = clamp(uv * 0.5 + 0.5, vec2f(0.001), vec2f(0.999));
+  return textureSampleLevel(skyTex, skySamp, t, layer, 0.0).rgb;
+}
+fn skyBg(d: vec3f) -> vec3f {
+  if (F.haze.y > 0.5) { return skyTexColor(d); }
+  return skyProc(d);
+}
+fn skyEnv(d: vec3f) -> vec3f {
+  if (F.haze.y > 0.5) { return skyTexColor(d); }
+  return skyGradient(d);
+}
+
+// ---------------- geometry ----------------
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) wpos: vec3f, @location(1) nrm: vec3f,
+  @location(2) color: vec4f, @location(3) @interpolate(flat) params: vec4f,
+}
+@vertex fn vs_main(@location(0) p: vec3f, @location(1) n: vec3f, @builtin(instance_index) ii: u32) -> VOut {
+  let I = inst[ii];
+  let w = I.model * vec4f(p, 1.0);
+  let a = I.model[0].xyz; let b = I.model[1].xyz; let c = I.model[2].xyz;
+  var o: VOut;
+  o.pos = F.viewProj * w;
+  o.wpos = w.xyz;
+  o.nrm = normalize(cross(b, c) * n.x + cross(c, a) * n.y + cross(a, b) * n.z); // cofactor = inverse-transpose
+  o.color = I.color; o.params = I.params;
+  return o;
+}
+
+// Sun: 3 cascaded shadow maps, 3x3 PCF.
+fn shadow(wp: vec3f, n: vec3f) -> f32 {
+  let d = dot(wp - F.camPos.xyz, F.camFwd.xyz);
+  var idx = 2;
+  if (d < F.splits.x) { idx = 0; } else if (d < F.splits.y) { idx = 1; }
+  let lp = F.cascadeVP[idx] * vec4f(wp + n * (0.03 + 0.04 * f32(idx)), 1.0);
+  let uv = vec2f(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+  var s = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      s += textureSampleCompareLevel(shadowTex, shadowSamp, uv + vec2f(f32(x), f32(y)) * F.proj.w, idx, lp.z);
+    }
+  }
+  let inside = select(0.0, 1.0, uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0 && lp.z < 1.0);
+  return mix(1.0, s / 9.0, inside);
+}
+
+fn dGGX(nh: f32, a: f32) -> f32 { let a2 = a * a; let d = nh * nh * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
+fn gSmith(nv: f32, nl: f32, r: f32) -> f32 {
+  let k = (r + 1.0) * (r + 1.0) / 8.0;
+  return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
+}
+fn fSchlick(c: f32, f0: vec3f) -> vec3f { return f0 + (vec3f(1.0) - f0) * pow(1.0 - c, 5.0); }
+// Cook-Torrance (already multiplied by N.L).
+fn brdf(N: vec3f, V: vec3f, L: vec3f, alb: vec3f, rough: f32, metal: f32) -> vec3f {
+  let H = normalize(V + L);
+  let f0 = mix(vec3f(0.04), alb, metal);
+  let nl = max(dot(N, L), 0.0);
+  let nv = max(dot(N, V), 0.0001);
+  let fr = fSchlick(max(dot(V, H), 0.0), f0);
+  let spec = dGGX(max(dot(N, H), 0.0), rough * rough) * gSmith(nv, nl, rough) * fr / (4.0 * nv * max(nl, 0.0001));
+  return ((vec3f(1.0) - fr) * (1.0 - metal) * alb / PI + spec) * nl;
+}
+
+// Flat studs on top faces (1-stud grid), fading with distance so they never shimmer. Returns perturbed normal + mark.
+fn stud(wp: vec3f, n: vec3f, dist: f32, studOn: f32) -> vec4f {
+  let fade = (1.0 - smoothstep(25.0, 75.0, dist)) * studOn * select(0.0, 1.0, n.y > 0.95);
+  let c = fract(wp.xz) - vec2f(0.5);
+  let r = length(c) / 0.3;
+  let dir = c / max(length(c), 0.0001);
+  let tilt = smoothstep(0.88, 1.0, r) * select(0.0, 1.0, r < 1.0) * 1.6 * fade;
+  let mark = select(0.0, 1.0, abs(c.x) < 0.075 && abs(c.y) < 0.075) * fade;
+  return vec4f(normalize(n + vec3f(dir.x, 0.0, dir.y) * tilt), mark);
+}
+
+@fragment fn fs_main(i: VOut) -> @location(0) vec4f {
+  let dist = length(F.camPos.xyz - i.wpos);
+  let n0 = normalize(i.nrm);
+  let st = stud(i.wpos, n0, dist, select(0.0, 1.0, i.params.w > 0.5));
+  let N = st.xyz;
+  let V = normalize(F.camPos.xyz - i.wpos);
+  let rough = clamp(i.params.x, 0.05, 1.0);
+  let metal = i.params.y;
+  let alb = pow(i.color.rgb, vec3f(2.2)) * (1.0 - 0.15 * st.w);
+  var col = brdf(N, V, F.sunDir.xyz, alb, rough, metal) * F.sunColor.rgb * shadow(i.wpos, n0);
+  // Ambient: bright sky hemisphere from above, warm bounce from below, plus a rough-attenuated sky reflection.
+  let f0 = mix(vec3f(0.04), alb, metal);
+  let fa = fSchlick(max(dot(N, V), 0.0001), f0);
+  let hemi = mix(GND_AMB, SKY_AMB, N.y * 0.5 + 0.5);
+  col += (vec3f(1.0) - fa) * (1.0 - metal) * alb * hemi * 0.9;
+  col += skyEnv(reflect(-V, N)) * fa * mix(1.0, 0.2, rough);
+  col += alb * i.params.z;
+  // Distance haze fades into the horizon band of the sky.
+  let vd = normalize(i.wpos - F.camPos.xyz);
+  let hz = skyEnv(normalize(vec3f(vd.x, 0.03, vd.z)));
+  col = mix(col, hz, (1.0 - exp(-F.haze.x * dist)) * exp(-max(i.wpos.y, 0.0) * 0.01));
+  return vec4f(col, 1.0);
+}
+
+struct SkyOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f }
+@vertex fn vs_sky(@builtin(vertex_index) i: u32) -> SkyOut {
+  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var o: SkyOut; o.pos = vec4f(p[i], 1.0, 1.0); o.ndc = p[i]; return o;
+}
+@fragment fn fs_sky(i: SkyOut) -> @location(0) vec4f {
+  let d = normalize(F.camFwd.xyz + F.camRight.xyz * (i.ndc.x * F.proj.x * F.proj.y) + F.camUp.xyz * (i.ndc.y * F.proj.x));
+  return vec4f(skyBg(d), 1.0);
+}
+`;
+
+const SHADOW = /* wgsl */`
+struct Inst { model: mat4x4f, color: vec4f, params: vec4f }
+struct VP { m: mat4x4f }
+@group(0) @binding(0) var<uniform> vp: VP;
+@group(0) @binding(1) var<storage, read> inst: array<Inst>;
+@vertex fn vs_shadow(@location(0) p: vec3f, @builtin(instance_index) ii: u32) -> @builtin(position) vec4f {
+  return vp.m * inst[ii].model * vec4f(p, 1.0);
+}
+`;
+
+const POST = /* wgsl */`
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var tex2: texture_2d<f32>;
+struct PO { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+@vertex fn vs(@builtin(vertex_index) i: u32) -> PO {
+  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var o: PO; o.pos = vec4f(p[i], 0.0, 1.0); o.uv = vec2f(p[i].x * 0.5 + 0.5, 0.5 - p[i].y * 0.5); return o;
+}
+fn tap(uv: vec2f) -> vec3f { return textureSampleLevel(tex, samp, uv, 0.0).rgb; }
+fn box4(uv: vec2f) -> vec3f {
+  let ts = 1.0 / vec2f(textureDimensions(tex));
+  return 0.25 * (tap(uv + ts * vec2f(-1.0, -1.0)) + tap(uv + ts * vec2f(1.0, -1.0)) + tap(uv + ts * vec2f(-1.0, 1.0)) + tap(uv + ts * vec2f(1.0, 1.0)));
+}
+@fragment fn fs_pre(i: PO) -> @location(0) vec4f {   // only energy above 1.0 blooms (sun, hot highlights)
+  let c = box4(i.uv); let l = max(c.r, max(c.g, c.b));
+  return vec4f(min(c * (max(l - 1.0, 0.0) / max(l, 0.0001)), vec3f(50.0)), 1.0);
+}
+@fragment fn fs_down(i: PO) -> @location(0) vec4f { return vec4f(box4(i.uv), 1.0); }
+@fragment fn fs_up(i: PO) -> @location(0) vec4f { return vec4f(box4(i.uv), 1.0); } // additive blend
+
+fn aces(x: vec3f) -> vec3f {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));
+}
+fn srgb(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }
+@fragment fn fs_comp(i: PO) -> @location(0) vec4f {
+  let hdr = (textureSampleLevel(tex, samp, i.uv, 0.0).rgb + textureSampleLevel(tex2, samp, i.uv, 0.0).rgb * 0.3) * 1.25;
+  var c = aces(hdr);
+  let l = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  c = mix(vec3f(l), c, 1.12) * vec3f(1.03, 1.0, 0.96);       // saturated, slightly warm
+  return vec4f(srgb(c), 1.0);
+}
+`;
+
+// Crimson web renderer, FigureBlox-style look. WebGPU, HDR, 4x MSAA, PBR, 3 sun cascades with PCF,
+// procedural or six-face skybox, distance haze into the sky's horizon band, soft bloom, filmic tone map.
+
+
+
+const MAX_INST = 20000, CASCADES = 3, SHADOW_SIZE = 2048, BLOOM = 5, REACH = 200, MSAA = 4, SKY_SIZE = 1024;
+const ADD = { color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' } };
+
+class Renderer {
+  static async create(canvas) { const r = new Renderer(canvas); await r.init(); return r; }
+  constructor(canvas) { this.canvas = canvas; this.w = 0; this.h = 0; this.ranges = []; this.skyMode = 0; this.onError = null; }
+
+  _buf(data, usage) {
+    const b = this.device.createBuffer({ size: data.byteLength, usage: usage | GPUBufferUsage.COPY_DST });
+    this.device.queue.writeBuffer(b, 0, data); return b;
+  }
+
+  async init() {
+    const adapter = await navigator.gpu?.requestAdapter();
+    if (!adapter) throw new Error('WebGPU is not available in this browser.');
+    const d = this.device = await adapter.requestDevice();
+    d.lost.then(i => console.error('GPU device lost:', i.message));
+    d.onuncapturederror = e => { console.error(e.error.message); this.onError?.(e.error.message); };
+    this.ctx = this.canvas.getContext('webgpu');
+    this.format = navigator.gpu.getPreferredCanvasFormat();
+    this.ctx.configure({ device: d, format: this.format, alphaMode: 'opaque' });
+
+    const U = GPUBufferUsage, T = GPUTextureUsage;
+    const g = buildGeometry(); this.shapes = g.shapes;
+    this.vb = this._buf(g.vertices, U.VERTEX); this.ib = this._buf(g.indices, U.INDEX);
+    this.instBuf = d.createBuffer({ size: MAX_INST * 96, usage: U.STORAGE | U.COPY_DST });
+    this.frame = d.createBuffer({ size: 100 * 4, usage: U.UNIFORM | U.COPY_DST });
+    const vbl = { arrayStride: 24, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }] };
+    const depth = { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'less' };
+    const ms = { count: MSAA };
+
+    const sm = d.createShaderModule({ code: SCENE }), shm = d.createShaderModule({ code: SHADOW }), pm = d.createShaderModule({ code: POST });
+    for (const [name, mod] of [['scene', sm], ['shadow', shm], ['post', pm]]) { // surface WGSL errors instead of rendering black
+      const info = await mod.getCompilationInfo(), err = info.messages.find(m => m.type === 'error');
+      if (err) throw new Error(`${name} shader, line ${err.lineNum}: ${err.message}`);
+    }
+
+    this.cascadeBuf = [...Array(CASCADES)].map(() => d.createBuffer({ size: 64, usage: U.UNIFORM | U.COPY_DST }));
+    const shadowTex = d.createTexture({ size: [SHADOW_SIZE, SHADOW_SIZE, CASCADES], format: 'depth32float', usage: T.RENDER_ATTACHMENT | T.TEXTURE_BINDING });
+    this.shadowArr = shadowTex.createView({ dimension: '2d-array' });
+    this.shadowViews = [...Array(CASCADES)].map((_, i) => shadowTex.createView({ dimension: '2d', baseArrayLayer: i, arrayLayerCount: 1 }));
+    this.cmp = d.createSampler({ compare: 'less-equal', magFilter: 'linear', minFilter: 'linear' });
+    this.linear = d.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+    this.skySamp = this.linear;
+
+    const hdr = [{ format: 'rgba16float' }];
+    this.scenePipe = d.createRenderPipeline({ layout: 'auto', vertex: { module: sm, entryPoint: 'vs_main', buffers: [vbl] },
+      fragment: { module: sm, entryPoint: 'fs_main', targets: hdr }, primitive: { cullMode: 'back' }, depthStencil: depth, multisample: ms });
+    this.skyPipe = d.createRenderPipeline({ layout: 'auto', vertex: { module: sm, entryPoint: 'vs_sky' }, fragment: { module: sm, entryPoint: 'fs_sky', targets: hdr },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'less-equal' }, multisample: ms });
+    this.shadowPipe = d.createRenderPipeline({ layout: 'auto', vertex: { module: shm, entryPoint: 'vs_shadow', buffers: [vbl] }, primitive: { cullMode: 'back' },
+      depthStencil: { ...depth, depthBias: 1, depthBiasSlopeScale: 1.5 } });
+    const post = (entry, format, blend) => d.createRenderPipeline({ layout: 'auto', vertex: { module: pm, entryPoint: 'vs' },
+      fragment: { module: pm, entryPoint: entry, targets: [{ format, blend }] } });
+    this.pre = post('fs_pre', 'rgba16float'); this.down = post('fs_down', 'rgba16float');
+    this.up = post('fs_up', 'rgba16float', ADD); this.comp = post('fs_comp', this.format);
+
+    this.shadowBG = this.cascadeBuf.map(b => d.createBindGroup({ layout: this.shadowPipe.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: b } }, { binding: 1, resource: { buffer: this.instBuf } }] }));
+    this._setSkyTexture(d.createTexture({ size: [1, 1, 6], format: 'rgba8unorm-srgb', usage: T.TEXTURE_BINDING | T.COPY_DST }));  // placeholder until a skybox is loaded
+  }
+
+  _setSkyTexture(tex) {
+    const d = this.device;
+    this.skyTexObj?.destroy(); this.skyTexObj = tex;
+    const sky = tex.createView({ dimension: '2d-array' }), fr = { binding: 0, resource: { buffer: this.frame } };
+    this.sceneBG = d.createBindGroup({ layout: this.scenePipe.getBindGroupLayout(0), entries: [fr, { binding: 1, resource: { buffer: this.instBuf } },
+      { binding: 2, resource: this.shadowArr }, { binding: 3, resource: this.cmp }, { binding: 4, resource: sky }, { binding: 5, resource: this.skySamp }] });
+    this.skyBG = d.createBindGroup({ layout: this.skyPipe.getBindGroupLayout(0), entries: [fr, { binding: 4, resource: sky }, { binding: 5, resource: this.skySamp }] });
+  }
+
+  // Load a skybox from one image holding six faces in a 2-column x 3-row sheet, row by row:
+  //   back, down / front, left / right, top.  A small margin is trimmed from each cell to drop separator lines.
+  async setSkyboxFromBlob(blob) {
+    const d = this.device, bmp = await createImageBitmap(blob);
+    const cw = bmp.width / 2, ch = bmp.height / 3, inset = Math.round(Math.min(cw, ch) * 0.008) + 1;
+    const tex = d.createTexture({ size: [SKY_SIZE, SKY_SIZE, 6], format: 'rgba8unorm-srgb',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+    for (let k = 0; k < 6; k++) {
+      const face = await createImageBitmap(bmp, Math.round((k % 2) * cw + inset), Math.round(Math.floor(k / 2) * ch + inset),
+        Math.round(cw - 2 * inset), Math.round(ch - 2 * inset), { resizeWidth: SKY_SIZE, resizeHeight: SKY_SIZE, resizeQuality: 'high' });
+      d.queue.copyExternalImageToTexture({ source: face }, { texture: tex, origin: [0, 0, k] }, [SKY_SIZE, SKY_SIZE]);
+      face.close();
+    }
+    bmp.close(); this._setSkyTexture(tex); this.skyMode = 1;
+  }
+  setSkyboxProcedural() { this.skyMode = 0; }
+
+  _resize(w, h) {
+    const d = this.device, T = GPUTextureUsage, RT = T.RENDER_ATTACHMENT | T.TEXTURE_BINDING;
+    [this.msaaTex, this.depthTex, this.hdrTex, ...(this.bloom || [])].forEach(t => t?.destroy());
+    const tex = (w, h, format, usage, sampleCount = 1) => d.createTexture({ size: [w, h], format, usage, sampleCount });
+    this.msaaTex = tex(w, h, 'rgba16float', T.RENDER_ATTACHMENT, MSAA); this.depthTex = tex(w, h, 'depth32float', T.RENDER_ATTACHMENT, MSAA);
+    this.hdrTex = tex(w, h, 'rgba16float', RT);
+    this.bloom = [...Array(BLOOM)].map((_, i) => tex(Math.max(1, w >> (i + 1)), Math.max(1, h >> (i + 1)), 'rgba16float', RT));
+    this.msaaV = this.msaaTex.createView(); this.depthV = this.depthTex.createView(); this.hdrV = this.hdrTex.createView(); this.bloomV = this.bloom.map(t => t.createView());
+    const bg = (p, ...views) => d.createBindGroup({ layout: p.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: this.linear }, ...views.map((v, i) => ({ binding: i + 1, resource: v }))] });
+    this.preBG = bg(this.pre, this.hdrV);
+    this.downBG = this.bloomV.map(v => bg(this.down, v)); this.upBG = this.bloomV.map(v => bg(this.up, v));
+    this.compBG = bg(this.comp, this.hdrV, this.bloomV[0]);
+    this.w = w; this.h = h;
+  }
+
+  // part: {shape, pos, size, yaw, color (sRGB 0..1), rough, metal, emissive, studs}. One contiguous run per shape.
+  upload(parts) {
+    const visibleParts = parts.filter(p => (p.transparency ?? 0) < 1);
+    if (visibleParts.length > MAX_INST) throw new Error(`Too many parts (max ${MAX_INST})`);
+    const data = new Float32Array(visibleParts.length * 24); this.ranges = []; let k = 0;
+    for (const [name, s] of Object.entries(this.shapes)) {
+      const start = k;
+      for (const p of visibleParts) if (p.shape === name) {
+        data.set(modelMatrix(p.pos, p.size, p.yaw || 0), k * 24); data.set([...p.color, 1], k * 24 + 16);
+        data.set([p.rough ?? 0.5, p.metal ?? 0, p.emissive ?? 0, p.studs ? 1 : 0], k * 24 + 20); k++;
+      }
+      if (k > start) this.ranges.push({ count: s.count, first: s.first, base: s.base, n: k - start, start });
+    }
+    this.device.queue.writeBuffer(this.instBuf, 0, data);
+  }
+  _draw(p) {
+    p.setVertexBuffer(0, this.vb); p.setIndexBuffer(this.ib, 'uint32');
+    for (const r of this.ranges) p.drawIndexed(r.count, r.n, r.first, r.base, r.start);
+  }
+
+  // Stable (rotation-invariant, texel-snapped) box around one frustum slice.
+  _cascade(cam, c, near, far, toSun) {
+    const pts = [];
+    for (const dist of [near, far]) for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const hh = dist * c.th, hw = hh * c.aspect;
+      pts.push([0, 1, 2].map(i => cam.pos[i] + c.fwd[i] * dist + c.right[i] * hw * sx + c.up[i] * hh * sy));
+    }
+    const ctr = [0, 1, 2].map(i => pts.reduce((s, p) => s + p[i], 0) / 8);
+    const r = Math.ceil(Math.max(...pts.map(p => Math.hypot(p[0] - ctr[0], p[1] - ctr[1], p[2] - ctr[2]))) * 16) / 16;
+    const v = lookAt([0, 0, 0], [-toSun[0], -toSun[1], -toSun[2]], Math.abs(toSun[1]) > 0.99 ? [1, 0, 0] : [0, 1, 0]);
+    const cl = xform(v, ctr), texel = 2 * r / SHADOW_SIZE;
+    v[12] -= Math.floor(cl[0] / texel) * texel; v[13] -= Math.floor(cl[1] / texel) * texel;
+    return mul(ortho(-r, r, -r, r, -(cl[2] + r + REACH), r - cl[2]), v);
+  }
+
+  render(cam, env, time = 0) {
+    const d = this.device, w = this.canvas.width, h = this.canvas.height;
+    if (w !== this.w || h !== this.h) this._resize(w, h);
+    const aspect = w / h, th = Math.tan(cam.fov / 2), toSun = norm(env.sunDir), f = new Float32Array(100);
+    const fwd = [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), -Math.cos(cam.yaw) * Math.cos(cam.pitch)];
+    const right = norm(cross(fwd, [0, 1, 0])), up = cross(right, fwd), c = { fwd, right, up, aspect, th };
+    const view = lookAt(cam.pos, [cam.pos[0] + fwd[0], cam.pos[1] + fwd[1], cam.pos[2] + fwd[2]], [0, 1, 0]);
+    f.set(mul(perspective(cam.fov, aspect, cam.near, cam.far), view), 0);
+    const splits = [env.shadowDist * 0.08, env.shadowDist * 0.28, env.shadowDist]; let prev = cam.near;
+    for (let i = 0; i < CASCADES; i++) {
+      const m = this._cascade(cam, c, prev, splits[i], toSun);
+      f.set(m, 16 + i * 16); d.queue.writeBuffer(this.cascadeBuf[i], 0, m); prev = splits[i];
+    }
+    f.set([...splits, 0], 64); f.set([...cam.pos, 0], 68); f.set([...right, 0], 72); f.set([...up, 0], 76); f.set([...fwd, 0], 80);
+    f.set([th, aspect, time, 1 / SHADOW_SIZE], 84); f.set([...toSun, 0], 88); f.set([...env.sunColor, 0], 92); f.set([env.hazeDensity, this.skyMode, 0, 0], 96);
+    d.queue.writeBuffer(this.frame, 0, f);
+
+    const enc = d.createCommandEncoder();
+    for (let i = 0; i < CASCADES; i++) {
+      const q = enc.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: this.shadowViews[i], depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+      q.setPipeline(this.shadowPipe); q.setBindGroup(0, this.shadowBG[i]); this._draw(q); q.end();
+    }
+    const p = enc.beginRenderPass({ colorAttachments: [{ view: this.msaaV, resolveTarget: this.hdrV, clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'discard' }],
+      depthStencilAttachment: { view: this.depthV, depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' } });
+    p.setPipeline(this.scenePipe); p.setBindGroup(0, this.sceneBG); this._draw(p);
+    p.setPipeline(this.skyPipe); p.setBindGroup(0, this.skyBG); p.draw(3); p.end();
+    const fs = (pipe, bg, view, load) => {
+      const q = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: load ? 'load' : 'clear', clearValue: [0, 0, 0, 1], storeOp: 'store' }] });
+      q.setPipeline(pipe); q.setBindGroup(0, bg); q.draw(3); q.end();
+    };
+    fs(this.pre, this.preBG, this.bloomV[0], false);
+    for (let i = 0; i < BLOOM - 1; i++) fs(this.down, this.downBG[i], this.bloomV[i + 1], false);
+    for (let i = BLOOM - 1; i > 0; i--) fs(this.up, this.upBG[i], this.bloomV[i - 1], true);
+    fs(this.comp, this.compBG, this.ctx.getCurrentTexture().createView(), false);
+    d.queue.submit([enc.finish()]);
+  }
+}
+
+
+const canvas = document.getElementById('c'), hud = document.getElementById('hud');
+const fit = () => { const k = Math.min(devicePixelRatio || 1, 2); canvas.width = Math.max(1, innerWidth * k | 0); canvas.height = Math.max(1, innerHeight * k | 0); };
+fit(); addEventListener('resize', fit);
+
+// Classic BrickColor palette (name -> sRGB hex)
+const BC = { 'Bright red': 0xc4281c, 'Bright yellow': 0xf5cd30, 'Bright blue': 0x0d69ac, 'Dark green': 0x287f47, 'Bright green': 0x4b974b,
+  'Earth green': 0x27462d, 'Medium stone grey': 0xa3a2a5, 'Dark stone grey': 0x635f62, 'Institutional white': 0xf2f3f3, 'Black': 0x1b2a35,
+  'Brick yellow': 0xd7c59a, 'Cool yellow': 0xfdea8d, 'Reddish brown': 0x694028 };
+const rgb = n => { const h = BC[n]; return [(h >> 16 & 255) / 255, (h >> 8 & 255) / 255, (h & 255) / 255]; };
+
+const parts = [];
+let _instanceId = 1, _applyingRemote = false, _renderDirty = true, _sceneRenderer = null, _network = null, _selectedInstance = null, _runtimeUIReady = false;
+const _allocateId = () => _instanceId++;
+class Signal {
+  constructor() { this._callbacks = new Set(); }
+  Connect(fn) { this._callbacks.add(fn); return { Disconnect: () => this._callbacks.delete(fn) }; }
+  Once(fn) { let connection; connection = this.Connect((...a) => { connection.Disconnect(); fn(...a); }); return connection; }
+  Fire(...args) { for (const fn of [...this._callbacks]) { try { fn(...args); } catch (e) { console.error('CrimBlox signal error', e); } } }
+}
+class Instance {
+  constructor(name = 'Instance', className = 'Instance') {
+    this.Id = _allocateId(); this.ClassName = className; this._Name = String(name); this._Parent = null; this.Children = [];
+    this.Changed = new Signal(); this.Destroying = new Signal(); this.AncestryChanged = new Signal();
+    this.DescendantAdded = new Signal(); this.DescendantRemoving = new Signal(); this._propertySignals = new Map(); this._destroyed = false;
+  }
+  get Name() { return this._Name; }
+  set Name(v) { v = String(v); if (v === this._Name) return; this._Name = v; this._changed('Name'); }
+  get Parent() { return this._Parent; }
+  set Parent(parent) {
+    if (parent === this._Parent) return;
+    if (parent !== null && !(parent instanceof Instance)) throw new TypeError('Parent must be an Instance or null');
+    for (let a = parent; a; a = a.Parent) if (a === this) throw new Error('Instance parenting cannot create a cycle');
+    const subtree = [this, ...this.GetDescendants()], old = this._Parent;
+    if (old) {
+      const i = old.Children.indexOf(this); if (i >= 0) old.Children.splice(i, 1);
+      for (const node of subtree) for (let a = old; a; a = a.Parent) a.DescendantRemoving.Fire(node);
+    }
+    this._Parent = parent;
+    if (parent) {
+      parent.Children.push(this);
+      for (const node of subtree) for (let a = parent; a; a = a.Parent) a.DescendantAdded.Fire(node);
+    }
+    this.AncestryChanged.Fire(this, parent); this._changed('Parent'); _markSceneDirty();
+  }
+  _changed(property) { this.Changed.Fire(property); const sig = this._propertySignals.get(property); if (sig) sig.Fire(); _markSceneDirty(); }
+  GetPropertyChangedSignal(name) { if (!this._propertySignals.has(name)) this._propertySignals.set(name, new Signal()); return this._propertySignals.get(name); }
+  AddChild(child) { child.Parent = this; return child; }
+  RemoveChild(child) { if (child.Parent === this) child.Parent = null; return child; }
+  GetChildren() { return [...this.Children]; }
+  GetDescendants() { const out = []; const visit = n => { for (const c of n.Children) { out.push(c); visit(c); } }; visit(this); return out; }
+  FindFirstChild(name, recursive = false) { const direct = this.Children.find(c => c.Name === name); if (direct || !recursive) return direct || null; for (const c of this.Children) { const found = c.FindFirstChild(name,true); if (found) return found; } return null; }
+  WaitForChild(name) { const found = this.FindFirstChild(name); if (!found) throw new Error('WaitForChild could not find ' + name + ' in ' + this.GetFullName()); return found; }
+  GetFullName() { return this.Parent ? this.Parent.GetFullName() + '.' + this.Name : this.Name; }
+  IsA(className) { return this.ClassName === className || (className === 'BasePart' && this instanceof Part) || (className === 'PVInstance' && this instanceof Part); }
+  ClearAllChildren() { for (const c of [...this.Children]) c.Destroy(); }
+  Destroy() { if (this._destroyed) return; this.Destroying.Fire(this); this.ClearAllChildren(); this.Parent = null; this._destroyed = true; }
+}
+class Folder extends Instance { constructor(name='Folder') { super(name,'Folder'); } }
+class Model extends Instance { constructor(name='Model') { super(name,'Model'); this.PrimaryPart=null; } }
+class Part extends Instance {
+  constructor(name='Part', shape='cube', pos=[0,1,0], size=[4,1,2], color=[.64,.64,.64], o={}) {
+    super(name,'Part'); this._Shape=shape; this._Position=[...pos]; this._Size=[...size]; this._Color=[...color];
+    this._Yaw=Number(o.yaw ?? o.Yaw ?? 0); this._Roughness=Number(o.rough ?? o.Roughness ?? .5); this._Metalness=Number(o.metal ?? o.Metalness ?? 0);
+    this._Emissive=Number(o.emissive ?? o.Emissive ?? 0); this._Studs=!!(o.studs ?? o.Studs); this._Transparency=Number(o.Transparency ?? 0);
+    this._CanCollide=o.CanCollide ?? true; this._Anchored=o.Anchored ?? true; this._Material=o.Material ?? 'Plastic';
+    this.AssemblyLinearVelocity=[0,0,0]; this._NetworkParentId=0;
+    if(this._Material==='Neon')this._Emissive=Math.max(this._Emissive,1.1);
+  }
+  _vector(key,value,label){if(!Array.isArray(value)||value.length<3||!value.slice(0,3).every(Number.isFinite))throw new TypeError(label+' must be a finite Vector3');this[key]=value.slice(0,3);this._changed(label);}
+  get Position(){return [...this._Position]} set Position(v){this._vector('_Position',v,'Position')}
+  get Size(){return [...this._Size]} set Size(v){const s=v.slice(0,3).map(Number);if(s.length!==3||s.some(x=>!Number.isFinite(x)||x<=0))throw new TypeError('Size components must be positive');this._Size=s;this._changed('Size')}
+  get Color(){return [...this._Color]} set Color(v){if(v&&!Array.isArray(v)&&'R' in v)v=[v.R,v.G,v.B];if(!Array.isArray(v)||v.length<3||!v.slice(0,3).every(Number.isFinite))throw new TypeError('Color must be a Color3');this._Color=v.slice(0,3).map(x=>Math.max(0,Math.min(1,x)));this._changed('Color')}
+  get CFrame(){return{Position:this.Position,Yaw:this._Yaw}} set CFrame(v){if(v.Position)this.Position=v.Position;if(Number.isFinite(v.Yaw))this.Yaw=v.Yaw}
+  get Shape(){return this._Shape} set Shape(v){const m={Block:'cube',Ball:'sphere',Cylinder:'cylinder',Wedge:'wedge',Cone:'cone',Cube:'cube'};v=m[v]||String(v).toLowerCase();if(!['cube','sphere','cylinder','wedge','cone'].includes(v))throw new Error('Unsupported Part.Shape: '+v);this._Shape=v;this._changed('Shape')}
+  get Yaw(){return this._Yaw} set Yaw(v){this._Yaw=Number(v)||0;this._changed('Yaw')}
+  get Transparency(){return this._Transparency} set Transparency(v){this._Transparency=Math.max(0,Math.min(1,Number(v)||0));this._changed('Transparency')}
+  get CanCollide(){return this._CanCollide} set CanCollide(v){this._CanCollide=!!v;this._changed('CanCollide')}
+  get Anchored(){return this._Anchored} set Anchored(v){this._Anchored=!!v;this._changed('Anchored')}
+  get Material(){return this._Material} set Material(v){this._Material=String(v).replace(/^Enum\.Material\./,'');if(this._Material==='Neon')this._Emissive=Math.max(this._Emissive,1.1);this._changed('Material')}
+  get Roughness(){return this._Roughness} set Roughness(v){this._Roughness=Math.max(.05,Math.min(1,Number(v)));this._changed('Roughness')}
+  get Metalness(){return this._Metalness} set Metalness(v){this._Metalness=Math.max(0,Math.min(1,Number(v)));this._changed('Metalness')}
+  get Emissive(){return this._Emissive} set Emissive(v){this._Emissive=Math.max(0,Number(v)||0);this._changed('Emissive')}
+  get Studs(){return this._Studs} set Studs(v){this._Studs=!!v;this._changed('Studs')}
+  get shape(){return this._Shape} get pos(){return this._Position} get size(){return this._Size} get color(){return this._Color}
+  get yaw(){return this._Yaw} get rough(){return this._Roughness} get metal(){return this._Metalness} get emissive(){return this._Emissive} get studs(){return this._Studs} get transparency(){return this._Transparency}
+  _setPositionRaw(v){this._Position=v}
+  toRecord(){return{id:this.Id,parentId:this.Parent===Workspace?0:(this.Parent?this.Parent.Id:0),className:this.ClassName,name:this.Name,shape:this.Shape,pos:this.Position,size:this.Size,color:this.Color,yaw:this.Yaw,rough:this.Roughness,metal:this.Metalness,emissive:this.Emissive,transparency:this.Transparency,studs:this.Studs,CanCollide:this.CanCollide,Anchored:this.Anchored,Material:this.Material}}
+}
+class Constraint extends Instance { constructor(name,cn){super(name,cn);this.Part0=null;this.Part1=null;this.Enabled=true;} }
+class WeldConstraint extends Constraint { constructor(name='WeldConstraint'){super(name,'WeldConstraint');this._offset=null;} }
+class SpringConstraint extends Constraint { constructor(name='SpringConstraint'){super(name,'SpringConstraint');this.FreeLength=4;this.Stiffness=30;this.Damping=5;} }
+class Player extends Instance { constructor(name='Player'){super(name,'Player');this.UserId=0;this.Character=null;this.DisplayName=name;} }
+class PlayersService extends Instance { constructor(){super('Players','Players');this.LocalPlayer=new Player('CrimBloxPlayer');this.AddChild(this.LocalPlayer);} GetPlayers(){return this.GetChildren().filter(x=>x instanceof Player);} }
+class WorkspaceService extends Instance { constructor(){super('Workspace','Workspace');this.CurrentCamera=null;this.Gravity=196.2;} }
+class LightingService extends Instance { constructor(){super('Lighting','Lighting');this.Brightness=2;this.ClockTime=14;this.Ambient=[.4,.6,.95];this.OutdoorAmbient=[.3,.27,.22];} }
+const Workspace=new WorkspaceService(),Players=new PlayersService(),ReplicatedStorage=new Folder('ReplicatedStorage'),ServerStorage=new Folder('ServerStorage'),Lighting=new LightingService(),RunService=new Instance('RunService','RunService');
+const game=new Instance('game','DataModel');game.Workspace=Workspace;game.Players=Players;game.ReplicatedStorage=ReplicatedStorage;game.ServerStorage=ServerStorage;game.Lighting=Lighting;game.RunService=RunService;
+for(const service of [Workspace,Players,ReplicatedStorage,ServerStorage,Lighting,RunService])game.AddChild(service);
+game.GetService=name=>({Workspace,Players,ReplicatedStorage,ServerStorage,Lighting,RunService}[name]||null);
+window.game=game;window.Workspace=Workspace;window.workspace=Workspace;window.Players=Players;window.ReplicatedStorage=ReplicatedStorage;window.ServerStorage=ServerStorage;
+const Vector3={new:(x=0,y=0,z=0)=>[Number(x),Number(y),Number(z)]};
+const Color3={new:(r=0,g=0,b=0)=>[Number(r),Number(g),Number(b)],fromRGB:(r=0,g=0,b=0)=>[Number(r)/255,Number(g)/255,Number(b)/255]};
+const CFrame={new:(x=0,y=0,z=0,yaw=0)=>({Position:[Number(x),Number(y),Number(z)],Yaw:Number(yaw)})};
+const Enum={Material:new Proxy({}, {get:(_,n)=>String(n)}),PartType:new Proxy({}, {get:(_,n)=>String(n)})};
+const InstanceFactory={new:(kind='Part')=>{if(kind==='Part'||kind==='MeshPart'||kind==='WedgePart')return new Part(kind,kind==='WedgePart'?'wedge':'cube',[0,1,0],[4,1,2],[.64,.64,.64],{Anchored:false});if(kind==='Folder')return new Folder();if(kind==='Model')return new Model();if(kind==='WeldConstraint')return new WeldConstraint();if(kind==='SpringConstraint')return new SpringConstraint();throw new Error('Instance.new("'+kind+'") is unavailable in this prototype');}};
+window.Instance=InstanceFactory;window.Vector3=Vector3;window.Color3=Color3;window.CFrame=CFrame;
+function _markSceneDirty(){_renderDirty=true;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer&&!_applyingRemote){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
+function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
+Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node)){parts.push(node);node.Changed.Connect(prop=>{if(!_applyingRemote&&_network)_network.sendProperty(node,prop);_markSceneDirty()});node.Destroying.Connect(()=>{if(!_applyingRemote&&_network)_network.sendDestroy(node.Id)})}_markSceneDirty()});
+Workspace.DescendantRemoving.Connect(node=>{const i=parts.indexOf(node);if(i>=0)parts.splice(i,1);_markSceneDirty()});
+const add=(shape,pos,size,brickColor,o={})=>{const defaultName=shape[0].toUpperCase()+shape.slice(1)+'_'+String(_instanceId).padStart(4,'0');const p=new Part(o.Name||defaultName,shape,pos,size,rgb(brickColor),o);p.Anchored=o.Anchored??true;p.CanCollide=o.CanCollide??true;Workspace.AddChild(p);return p};
+class PhysicsWorld {
+  constructor(workspace){this.Workspace=workspace;this.Gravity=196.2;this.SafeY=-100;this._accumulator=0;this.StepRate=1/60;this.ConstraintsEnabled=true}
+  _aabb(p){const h=p.Size.map(x=>x*.5),c=p.Position;return{min:c.map((x,i)=>x-h[i]),max:c.map((x,i)=>x+h[i]),c,h}}
+  _resolve(body,other){if(!body.CanCollide||!other.CanCollide||body===other)return;const a=this._aabb(body),b=this._aabb(other),ov=[Math.min(a.max[0],b.max[0])-Math.max(a.min[0],b.min[0]),Math.min(a.max[1],b.max[1])-Math.max(a.min[1],b.min[1]),Math.min(a.max[2],b.max[2])-Math.max(a.min[2],b.min[2])];if(ov.some(v=>v<=0))return;let ax=0;if(ov[1]<ov[ax])ax=1;if(ov[2]<ov[ax])ax=2;const sign=a.c[ax]>=b.c[ax]?1:-1,p=body.Position;p[ax]+=sign*(ov[ax]+.0005);body._setPositionRaw(p);body.AssemblyLinearVelocity[ax]=0}
+  _solveConstraints(dt,nodes){if(!this.ConstraintsEnabled)return;for(const c of nodes.filter(n=>n instanceof WeldConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){if(!c._offset)c._offset=sub(c.Part1.Position,c.Part0.Position);if(!c.Part1.Anchored){c.Part1._setPositionRaw(c.Part0.Position.map((v,i)=>v+c._offset[i]));c.Part1.AssemblyLinearVelocity=[...c.Part0.AssemblyLinearVelocity]}}for(const c of nodes.filter(n=>n instanceof SpringConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){const a=c.Part0,b=c.Part1,dv=sub(b.Position,a.Position),len=Math.hypot(...dv)||.0001,dir=dv.map(x=>x/len),rel=dot(sub(b.AssemblyLinearVelocity,a.AssemblyLinearVelocity),dir),force=(len-c.FreeLength)*c.Stiffness+rel*c.Damping;if(!a.Anchored)a.AssemblyLinearVelocity=a.AssemblyLinearVelocity.map((v,i)=>v+dir[i]*force*dt);if(!b.Anchored)b.AssemblyLinearVelocity=b.AssemblyLinearVelocity.map((v,i)=>v-dir[i]*force*dt)}}
+  Step(dt){this._accumulator+=Math.min(Math.max(dt,0),.1);let changed=false;while(this._accumulator>=this.StepRate){const h=this.StepRate,nodes=this.Workspace.GetDescendants(),moving=nodes.filter(n=>n instanceof Part&&!n.Anchored);for(const p of moving){p.AssemblyLinearVelocity[1]-=this.Gravity*h;p._setPositionRaw(p.Position.map((v,i)=>v+p.AssemblyLinearVelocity[i]*h));for(const q of nodes)if(q instanceof Part&&q.Anchored&&q.CanCollide)this._resolve(p,q);if(p.Position[1]<this.SafeY){p._setPositionRaw([0,Math.max(1,p.Size[1]),0]);p.AssemblyLinearVelocity=[0,0,0]}p._changed('Position');changed=true}this._solveConstraints(h,nodes);this._accumulator-=h}if(changed)_markSceneDirty()}
+}
+const Physics=new PhysicsWorld(Workspace);Workspace.PhysicsWorld=Physics;window.CrimBloxPhysics=Physics;
+
+
+// Baseplate and house (front faces +z). All sizes sit on whole studs.
+add('cube', [0, -1, 0], [2048, 2, 2048], 'Bright green', { studs: true, rough: 0.8 });
+add('cube', [0, 0.2, 0], [24, 0.4, 20], 'Dark green', { studs: true, rough: 0.8 });
+add('cube', [0, 4.4, 0], [18, 8, 14], 'Brick yellow', { rough: 0.7 });
+add('wedge', [0, 10.4, -4], [20, 4, 8], 'Bright red', { rough: 0.55 });
+add('wedge', [0, 10.4, 4], [20, 4, 8], 'Bright red', { yaw: Math.PI, rough: 0.55 });
+add('cube', [-4, 11.4, -2], [2, 6, 2], 'Cool yellow', { rough: 0.7 });
+add('cube', [0, 2.4, 7.25], [4, 4, 0.5], 'Black'); add('sphere', [0, 4.4, 7.25], [4, 4, 0.5], 'Black');   // arched doorway
+for (const x of [-6, 6]) { add('cube', [x, 5, 7.25], [2, 3, 0.5], 'Reddish brown'); add('sphere', [x, 6.5, 7.25], [2, 2, 0.5], 'Reddish brown'); }
+add('cube', [0, 0.2, 22], [4, 0.4, 24], 'Medium stone grey', { studs: true });                          // path
+add('cube', [22, 0.2, 32], [48, 0.4, 4], 'Medium stone grey', { studs: true });
+add('cube', [44, 0.2, 7], [4, 0.4, 50], 'Medium stone grey', { studs: true });
+for (const [x, z] of [[24, -8], [31, -14], [19, -18]]) { add('cylinder', [x, 2, z], [1, 4, 1], 'Reddish brown', { rough: 0.8 }); add('cone', [x, 7, z], [6, 8, 6], 'Earth green', { rough: 0.8 }); }
+for (const [x, n] of [[50, 'Bright red'], [56, 'Bright yellow'], [62, 'Institutional white'], [68, 'Black']]) add('cube', [x, 1, -24], [4, 2, 2], n, { studs: true });
+add('cube', [36, 3, -18], [6, 6, 6], 'Bright yellow', { studs: true }); add('cube', [36, 6.5, -18], [6, 1, 6], 'Dark stone grey', { studs: true, metal: 0.8, rough: 0.35 });
+add('cube', [-30, 2, -6], [6, 4, 6], 'Bright blue', { studs: true });
+add('cylinder', [41, 3, 6], [1, 6, 1], 'Institutional white'); add('cylinder', [47, 3, 6], [1, 6, 1], 'Institutional white');
+add('cube', [44, 6.5, 6], [8, 1, 1], 'Bright red');
+add('sphere', [-16, 2, 20], [4, 4, 4], 'Bright red', { rough: 0.3 }); add('sphere', [16, 2, 20], [4, 4, 4], 'Bright blue', { rough: 0.3 });
+add('sphere', [-8, 2, 28], [4, 4, 4], 'Bright yellow', { metal: 1, rough: 0.25 }); add('sphere', [8, 2, 28], [4, 4, 4], 'Institutional white', { rough: 0.3 });
+for (const x of [-12, -4, 4, 12]) add('cylinder', [x, 8, -26], [4, 16, 4], 'Medium stone grey', { rough: 0.8 });
+
+const el = 50 * Math.PI / 180, az = 35 * Math.PI / 180;
+const env = { sunDir: [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)], sunColor: [3.0, 2.75, 2.3], hazeDensity: 0.0015, shadowDist: 220 };
+const cam = { pos: [0, 7, 42], yaw: 0, pitch: -0.1, fov: 70 * Math.PI / 180, near: 0.2, far: 3000 }; Workspace.CurrentCamera = cam;
+
+// Free camera (no character or animation yet): WASD move, Q/E down/up, Shift fast, drag to look, wheel = speed.
+const keys = new Set(); let speed = 20, gpuErr = '', skyNote = 'procedural sky';
+addEventListener('keydown', e => keys.add(e.code)); addEventListener('keyup', e => keys.delete(e.code));
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousemove', e => { if (e.buttons & 3) { cam.yaw += e.movementX * 0.004; cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch - e.movementY * 0.004)); } });
+canvas.addEventListener('wheel', e => { speed = Math.max(4, Math.min(200, speed * (1 - Math.sign(e.deltaY) * 0.1))); }, { passive: true });
+
+try {
+  const r = await Renderer.create(canvas); _sceneRenderer = r; window.CrimBloxRenderer = r; r.onError = e => { gpuErr = '\n⚠ GPU: ' + e.slice(0, 200); }; r.upload(_renderParts()); _renderDirty = false;
+  // Skybox: one image with six faces in a 2x3 sheet (back, down / front, left / right, top). Stays on your machine.
+  const file = document.getElementById('skyFile');
+  const loadSky = async f => { try { await r.setSkyboxFromBlob(f); skyNote = 'custom skybox: ' + f.name; } catch (e) { gpuErr = '\n⚠ Skybox: ' + e.message; } };
+  document.getElementById('skyBtn').onclick = () => file.click();
+  file.onchange = () => file.files[0] && loadSky(file.files[0]);
+  document.getElementById('skyReset').onclick = () => { r.setSkyboxProcedural(); skyNote = 'procedural sky'; };
+  window.CrimBloxEngine = { game, Workspace, Players, ReplicatedStorage, ServerStorage, Lighting, RunService, Physics, Instance, Part, Signal, renderParts:_renderParts, runScript:runCrimScript };
+  addEventListener('dragover', e => e.preventDefault());
+  addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) loadSky(f); });
+
+  _runtimeUIReady = true; renderTree();
+  let last = performance.now(), acc = 0, frames = 0;
+  const loop = now => {
+    const dt = Math.min((now - last) / 1000, 0.1); last = now; Physics.Step(dt); if (_renderDirty) { r.upload(_renderParts()); _renderDirty = false; }
+    const sp = speed * (keys.has('ShiftLeft') ? 3 : 1) * dt;
+    const f = [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), -Math.cos(cam.yaw) * Math.cos(cam.pitch)], rt = [Math.cos(cam.yaw), 0, Math.sin(cam.yaw)];
+    const mv = (v, s) => { for (let i = 0; i < 3; i++) cam.pos[i] += v[i] * s; };
+    if (keys.has('KeyW')) mv(f, sp); if (keys.has('KeyS')) mv(f, -sp); if (keys.has('KeyD')) mv(rt, sp); if (keys.has('KeyA')) mv(rt, -sp);
+    if (keys.has('KeyE')) cam.pos[1] += sp; if (keys.has('KeyQ')) cam.pos[1] -= sp;
+    cam.pos[1] = Math.max(cam.pos[1], 0.6);
+    r.render(cam, env, now / 1000);
+    acc += dt; frames++; if (acc > 0.5) { hud.textContent = `${(frames / acc).toFixed(0)} fps · ${parts.length} parts · ${skyNote}\nWASD move · Q/E down/up · Shift fast · drag to look · wheel speed · Instance tree / script subset${gpuErr}`; acc = 0; frames = 0; }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+} catch (e) { hud.textContent = 'Error: ' + e.message; console.error(e); }
+
 </script></body></html>
