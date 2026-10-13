@@ -708,6 +708,8 @@ window.Instance=InstanceFactory;window.Vector3=Vector3;window.Color3=Color3;wind
 function _markSceneDirty(){_renderDirty=true;if(_applyingRemote)return;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
 function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
 Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node))parts.push(node);if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
+ReplicatedStorage.DescendantAdded.Connect(node=>{if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
+ReplicatedStorage.DescendantRemoving.Connect(node=>{_markSceneDirty()});
 Workspace.DescendantRemoving.Connect(node=>{const i=parts.indexOf(node);if(i>=0)parts.splice(i,1);_markSceneDirty()});
 const add=(shape,pos,size,brickColor,o={})=>{const defaultName=shape[0].toUpperCase()+shape.slice(1)+'_'+String(_instanceId).padStart(4,'0');const p=new Part(o.Name||defaultName,shape,pos,size,rgb(brickColor),o);p.Anchored=o.Anchored??true;p.CanCollide=o.CanCollide??true;Workspace.AddChild(p);return p};
 class PhysicsWorld {
