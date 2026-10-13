@@ -636,7 +636,7 @@ class Instance {
     }
     this.AncestryChanged.Fire(this, parent); this._changed('Parent'); _markSceneDirty();
   }
-  _changed(property) { this.Changed.Fire(property); const sig = this._propertySignals.get(property); if (sig) sig.Fire(); _markSceneDirty(); }
+  _changed(property) { this.Changed.Fire(property); const sig = this._propertySignals.get(property); if (sig) sig.Fire(); }
   GetPropertyChangedSignal(name) { if (!this._propertySignals.has(name)) this._propertySignals.set(name, new Signal()); return this._propertySignals.get(name); }
   AddChild(child) { child.Parent = this; return child; }
   RemoveChild(child) { if (child.Parent === this) child.Parent = null; return child; }
@@ -687,6 +687,13 @@ class Player extends Instance { constructor(name='Player'){super(name,'Player');
 class PlayersService extends Instance { constructor(){super('Players','Players');this.LocalPlayer=new Player('CrimBloxPlayer');this.AddChild(this.LocalPlayer);} GetPlayers(){return this.GetChildren().filter(x=>x instanceof Player);} }
 class WorkspaceService extends Instance { constructor(){super('Workspace','Workspace');this.CurrentCamera=null;this.Gravity=196.2;} }
 class LightingService extends Instance { constructor(){super('Lighting','Lighting');this.Brightness=2;this.ClockTime=14;this.Ambient=[.4,.6,.95];this.OutdoorAmbient=[.3,.27,.22];} }
+
+class RemoteEvent extends Instance {
+  constructor(name='RemoteEvent'){super(name,'RemoteEvent');this.OnClientEvent=new Signal();this.OnServerEvent=new Signal();}
+  FireServer(...args){this.OnServerEvent.Fire(Players.LocalPlayer,...args);if(_network)_network.sendRemoteEvent(this,args)}
+  FireAllClients(...args){this.OnClientEvent.Fire(...args);if(_network)_network.sendRemoteEvent(this,args)}
+}
+
 const Workspace=new WorkspaceService(),Players=new PlayersService(),ReplicatedStorage=new Folder('ReplicatedStorage'),ServerStorage=new Folder('ServerStorage'),Lighting=new LightingService(),RunService=new Instance('RunService','RunService');
 const game=new Instance('game','DataModel');game.Workspace=Workspace;game.Players=Players;game.ReplicatedStorage=ReplicatedStorage;game.ServerStorage=ServerStorage;game.Lighting=Lighting;game.RunService=RunService;
 for(const service of [Workspace,Players,ReplicatedStorage,ServerStorage,Lighting,RunService])game.AddChild(service);
@@ -741,7 +748,7 @@ function _downloadFile(name,blob){const url=URL.createObjectURL(blob),a=document
 const _shapeToId={cube:0,sphere:1,cylinder:2,wedge:3,cone:4},_idToShape=['cube','sphere','cylinder','wedge','cone'];
 const _materials=['Plastic','Neon','Concrete','Wood','Metal','Grass'];
 function _parentWireId(node){if(!node||node===Workspace)return 0;if(node===ReplicatedStorage)return 4294967281;if(node===ServerStorage)return 4294967282;if(node===Players)return 4294967283;return node.Id>>>0}
-function _nodeClassId(n){return n instanceof Part?1:n instanceof Model?2:n instanceof Folder?3:0}
+function _nodeClassId(n){return n instanceof Part?1:n instanceof Model?2:n instanceof Folder?3:n instanceof RemoteEvent?4:0}
 function _wireNodes(){return [...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].filter(n=>_nodeClassId(n)!==0)}
 function _encodeGraph(magic,packetType,nodes){
  const enc=new TextEncoder(),names=nodes.map(n=>enc.encode(n.Name)),size=12+nodes.reduce((s,n,i)=>s+72+names[i].length,0),out=new Uint8Array(size),v=new DataView(out.buffer);
@@ -765,7 +772,7 @@ function _decodeGraph(buffer,expectedMagic){
 }
 function _nodeFromRecord(rec,preserveId){
  let node;if(rec.classId===1){node=new Part(rec.name,rec.shape,rec.pos,rec.size,rec.color,{Anchored:!!(rec.flags&1),CanCollide:!!(rec.flags&2),Studs:!!(rec.flags&4),Roughness:rec.rough,Metalness:rec.metal,Emissive:rec.emissive,Transparency:rec.transparency,Material:_materials[(rec.flags>>3)&7]||'Plastic',yaw:rec.yaw})}
- else if(rec.classId===2)node=new Model(rec.name);else if(rec.classId===3)node=new Folder(rec.name);else return null;
+ else if(rec.classId===2)node=new Model(rec.name);else if(rec.classId===3)node=new Folder(rec.name);else if(rec.classId===4)node=new RemoteEvent(rec.name);else return null;
  if(preserveId)node.Id=rec.id>>>0;return node;
 }
 function _applyRecords(records,replace=false){
@@ -805,10 +812,11 @@ function _applyDelta(bytes){
 class NetworkClient {
  constructor(url){this.url=url;this.socket=null;this.state='connecting';this.retries=0;this.journalApplied=0}
  start(){this._connect()}
- _connect(){if(this.url==='off'||this.url==='local')return;try{const ws=this.socket=new WebSocket(this.url);ws.binaryType='arraybuffer';ws.onopen=()=>{this.state='connected';this.retries=0;console.info('CrimBlox network connected')};ws.onmessage=async e=>{try{const b=new Uint8Array(e.data instanceof Blob?await e.data.arrayBuffer():e.data);if(b.length<5||String.fromCharCode(...b.slice(0,4))!=='CBN1')return;const type=b[4];if(type===0){ws.send(_encodeGraph('CBN1',1,_wireNodes()));this.state='synced';return}if(type===1){_applyRecords(_decodeGraph(b,'CBN1'),true);this.state='synced';return}if(type===2){_applyDelta(b);return}if(type===3){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);if(node){_applyingRemote=true;try{node.Destroy()}finally{_applyingRemote=false}}}return}if(type===4){const records=_decodeGraph(b,'CBN1');_applyRecords(records,false);return}}catch(err){console.warn('Replication packet rejected',err)}};ws.onclose=()=>{this.state='offline';if(this.url!=='off'&&this.url!=='local'&&this.retries<20){this.retries++;setTimeout(()=>this._connect(),4000)}};ws.onerror=()=>{this.state='offline'}}catch(e){this.state='offline'}}
+ _connect(){if(this.url==='off'||this.url==='local')return;try{const ws=this.socket=new WebSocket(this.url);ws.binaryType='arraybuffer';ws.onopen=()=>{this.state='connected';this.retries=0;console.info('CrimBlox network connected')};ws.onmessage=async e=>{try{const b=new Uint8Array(e.data instanceof Blob?await e.data.arrayBuffer():e.data);if(b.length<5||String.fromCharCode(...b.slice(0,4))!=='CBN1')return;const type=b[4];if(type===0){ws.send(_encodeGraph('CBN1',1,_wireNodes()));this.state='synced';return}if(type===1){_applyRecords(_decodeGraph(b,'CBN1'),true);this.state='synced';return}if(type===2){_applyDelta(b);return}if(type===5){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),event=[...ReplicatedStorage.GetDescendants(),...Workspace.GetDescendants()].find(n=>n instanceof RemoteEvent&&(n.Id>>>0)===id);if(event){const args=JSON.parse(new TextDecoder().decode(b.slice(12)));event.OnClientEvent.Fire(...(Array.isArray(args)?args:[args]))}}return}if(type===3){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);if(node){_applyingRemote=true;try{node.Destroy()}finally{_applyingRemote=false}}}return}if(type===4){const records=_decodeGraph(b,'CBN1');_applyRecords(records,false);return}}catch(err){console.warn('Replication packet rejected',err)}};ws.onclose=()=>{this.state='offline';if(this.url!=='off'&&this.url!=='local'&&this.retries<20){this.retries++;setTimeout(()=>this._connect(),4000)}};ws.onerror=()=>{this.state='offline'}}catch(e){this.state='offline'}}
  sendProperty(node,prop){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const packet=_encodeDelta(node,prop);if(packet)this.socket.send(packet)}
  sendDestroy(id){if(!this.socket||this.socket.readyState!==WebSocket.OPEN)return;const b=new Uint8Array(12);b.set([67,66,78,49,3,0,0,0]);new DataView(b.buffer).setUint32(8,id>>>0,true);this.socket.send(b)}
  sendCreate(node){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const b=_encodeGraph('CBN1',4,[node]);this.socket.send(b)}
+ sendRemoteEvent(node,args){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const payload=new TextEncoder().encode(JSON.stringify(args));const b=new Uint8Array(12+payload.length);b.set([67,66,78,49,5,0,0,0]);new DataView(b.buffer).setUint32(8,node.Id>>>0,true);b.set(payload,12);this.socket.send(b)}
 }
 
 const el = 50 * Math.PI / 180, az = 35 * Math.PI / 180;
@@ -837,7 +845,7 @@ function _evalLuaValue(expr,vars){
 }
 function runCrimScript(source){
  const output=document.getElementById('scriptOutput'),logs=[];
- const vars=new Map([['game',game],['workspace',Workspace],['Workspace',Workspace],['Players',Players],['ReplicatedStorage',ReplicatedStorage],['ServerStorage',ServerStorage],['Lighting',Lighting],['RunService',RunService],['Instance',InstanceFactory],['Vector3',Vector3],['Color3',Color3],['CFrame',CFrame],['Enum',Enum]]);
+ const vars=new Map([['game',game],['workspace',Workspace],['Workspace',Workspace],['Players',Players],['ReplicatedStorage',ReplicatedStorage],['ServerStorage',ServerStorage],['Lighting',Lighting],['RunService',RunService],['RemoteEvent',RemoteEvent],['Instance',InstanceFactory],['Vector3',Vector3],['Color3',Color3],['CFrame',CFrame],['Enum',Enum]]);
  const log=(...args)=>logs.push(args.map(x=>x instanceof Instance?x.GetFullName():Array.isArray(x)?'('+x.join(', ')+')':String(x)).join(' '));
  try{
   const lines=source.split('\n');
