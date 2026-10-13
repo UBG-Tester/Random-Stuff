@@ -647,7 +647,7 @@ class Instance {
   GetFullName() { return this.Parent ? this.Parent.GetFullName() + '.' + this.Name : this.Name; }
   IsA(className) { return this.ClassName === className || (className === 'BasePart' && this instanceof Part) || (className === 'PVInstance' && this instanceof Part); }
   ClearAllChildren() { for (const c of [...this.Children]) c.Destroy(); }
-  Destroy() { if (this._destroyed) return; this.Destroying.Fire(this); this.ClearAllChildren(); this.Parent = null; this._destroyed = true; }
+  Destroy() { if (this._destroyed) return; this.Destroying.Fire(this); if (_network && !_applyingRemote && (this instanceof Part || this instanceof Folder || this instanceof Model)) _network.sendDestroy(this.Id); this.ClearAllChildren(); this.Parent = null; this._destroyed = true; }
 }
 class Folder extends Instance { constructor(name='Folder') { super(name,'Folder'); } }
 class Model extends Instance { constructor(name='Model') { super(name,'Model'); this.PrimaryPart=null; } }
@@ -805,7 +805,7 @@ function _applyDelta(bytes){
 class NetworkClient {
  constructor(url){this.url=url;this.socket=null;this.state='connecting';this.retries=0;this.journalApplied=0}
  start(){this._connect()}
- _connect(){if(this.url==='off'||this.url==='local')return;try{const ws=this.socket=new WebSocket(this.url);ws.binaryType='arraybuffer';ws.onopen=()=>{this.state='connected';this.retries=0;console.info('CrimBlox network connected')};ws.onmessage=async e=>{try{const b=new Uint8Array(e.data instanceof Blob?await e.data.arrayBuffer():e.data);if(b.length<5||String.fromCharCode(...b.slice(0,4))!=='CBN1')return;const type=b[4];if(type===0){ws.send(_encodeGraph('CBN1',1,_wireNodes()));return}if(type===1){_applyRecords(_decodeGraph(b,'CBN1'),true);this.state='synced';return}if(type===2){_applyDelta(b);return}if(type===3){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);if(node){_applyingRemote=true;try{node.Destroy()}finally{_applyingRemote=false}}}return}if(type===4){const records=_decodeGraph(b,'CBN1');_applyRecords(records,false);return}}catch(err){console.warn('Replication packet rejected',err)}};ws.onclose=()=>{this.state='offline';if(this.url!=='off'&&this.url!=='local'&&this.retries<20){this.retries++;setTimeout(()=>this._connect(),4000)}};ws.onerror=()=>{this.state='offline'}}catch(e){this.state='offline'}}
+ _connect(){if(this.url==='off'||this.url==='local')return;try{const ws=this.socket=new WebSocket(this.url);ws.binaryType='arraybuffer';ws.onopen=()=>{this.state='connected';this.retries=0;console.info('CrimBlox network connected')};ws.onmessage=async e=>{try{const b=new Uint8Array(e.data instanceof Blob?await e.data.arrayBuffer():e.data);if(b.length<5||String.fromCharCode(...b.slice(0,4))!=='CBN1')return;const type=b[4];if(type===0){ws.send(_encodeGraph('CBN1',1,_wireNodes()));this.state='synced';return}if(type===1){_applyRecords(_decodeGraph(b,'CBN1'),true);this.state='synced';return}if(type===2){_applyDelta(b);return}if(type===3){if(b.length>=12){const id=new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(8,true),node=[...Workspace.GetDescendants(),...ReplicatedStorage.GetDescendants()].find(n=>(n.Id>>>0)===id);if(node){_applyingRemote=true;try{node.Destroy()}finally{_applyingRemote=false}}}return}if(type===4){const records=_decodeGraph(b,'CBN1');_applyRecords(records,false);return}}catch(err){console.warn('Replication packet rejected',err)}};ws.onclose=()=>{this.state='offline';if(this.url!=='off'&&this.url!=='local'&&this.retries<20){this.retries++;setTimeout(()=>this._connect(),4000)}};ws.onerror=()=>{this.state='offline'}}catch(e){this.state='offline'}}
  sendProperty(node,prop){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const packet=_encodeDelta(node,prop);if(packet)this.socket.send(packet)}
  sendDestroy(id){if(!this.socket||this.socket.readyState!==WebSocket.OPEN)return;const b=new Uint8Array(12);b.set([67,66,78,49,3,0,0,0]);new DataView(b.buffer).setUint32(8,id>>>0,true);this.socket.send(b)}
  sendCreate(node){if(!this.socket||this.socket.readyState!==WebSocket.OPEN||this.state!=='synced')return;const b=_encodeGraph('CBN1',4,[node]);this.socket.send(b)}
@@ -815,6 +815,52 @@ const el = 50 * Math.PI / 180, az = 35 * Math.PI / 180;
 const env = { sunDir: [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)], sunColor: [3.0, 2.75, 2.3], hazeDensity: 0.0015, shadowDist: 220 };
 const cam = { pos: [0, 7, 42], yaw: 0, pitch: -0.1, fov: 70 * Math.PI / 180, near: 0.2, far: 3000 }; Workspace.CurrentCamera = cam;
 
+
+
+function _resolvePath(path,vars){
+ path=path.trim();const service=path.match(/^game:GetService\(["']([^"']+)["']\)$/);if(service)return game.GetService(service[1]);if(vars.has(path))return vars.get(path);
+ const segs=path.split('.'),root=segs.shift();let value=vars.get(root);if(!value)throw new Error('Unknown variable or path: '+path);
+ for(const seg of segs){if(value instanceof Instance){if(seg in value)value=value[seg];else{const child=value.FindFirstChild(seg);if(!child)throw new Error('No child '+seg+' in '+value.GetFullName());value=child}}else if(value&&seg in value)value=value[seg];else throw new Error('Cannot resolve '+seg+' in '+path)}
+ return value;
+}
+function _evalLuaValue(expr,vars){
+ expr=expr.trim();if((expr[0]==='"'&&expr.at(-1)==='"')||(expr[0]==="'"&&expr.at(-1)==="'"))return expr.slice(1,-1).replace(/\\n/g,'\n');
+ if(expr==='true')return true;if(expr==='false')return false;if(expr==='nil'||expr==='null')return null;if(/^-?\d+(\.\d+)?$/.test(expr))return Number(expr);
+ let m=expr.match(/^Vector3\.new\(([^)]*)\)$/);if(m)return Vector3.new(...m[1].split(',').map(Number));
+ m=expr.match(/^Color3\.fromRGB\(([^)]*)\)$/);if(m)return Color3.fromRGB(...m[1].split(',').map(Number));
+ m=expr.match(/^Color3\.new\(([^)]*)\)$/);if(m)return Color3.new(...m[1].split(',').map(Number));
+ m=expr.match(/^CFrame\.new\(([^)]*)\)$/);if(m)return CFrame.new(...m[1].split(',').map(Number));
+ m=expr.match(/^Enum\.[A-Za-z_]+\.([A-Za-z_]+)$/);if(m)return m[1];
+ m=expr.match(/^Instance\.new\(["']([^"']+)["']\)$/);if(m)return InstanceFactory.new(m[1]);
+ if(/^game:GetService\(/.test(expr)||/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/.test(expr))return _resolvePath(expr,vars);
+ throw new Error('Unsupported expression: '+expr);
+}
+function runCrimScript(source){
+ const output=document.getElementById('scriptOutput'),logs=[];
+ const vars=new Map([['game',game],['workspace',Workspace],['Workspace',Workspace],['Players',Players],['ReplicatedStorage',ReplicatedStorage],['ServerStorage',ServerStorage],['Lighting',Lighting],['RunService',RunService],['Instance',InstanceFactory],['Vector3',Vector3],['Color3',Color3],['CFrame',CFrame],['Enum',Enum]]);
+ const log=(...args)=>logs.push(args.map(x=>x instanceof Instance?x.GetFullName():Array.isArray(x)?'('+x.join(', ')+')':String(x)).join(' '));
+ try{
+  const lines=source.split('\n');
+  for(let n=0;n<lines.length;n++){
+   const line=lines[n].replace(/--.*$/,'').trim();if(!line)continue;
+   for(const stmt of line.split(';').map(s=>s.trim()).filter(Boolean)){
+    let m=stmt.match(/^(print|warn)\((.*)\)$/);
+    if(m){const args=m[2].trim()?m[2].split(/,(?![^()]*\))/).map(x=>_evalLuaValue(x,vars)):[];log(...args);continue}
+    if(/^wait\(|^task\.wait\(/.test(stmt))continue;
+    m=stmt.match(/^(.+):([A-Za-z_]\w*)\((.*)\)$/);
+    if(m){const obj=_resolvePath(m[1],vars),method=m[2],args=m[3].trim()?m[3].split(',').map(x=>_evalLuaValue(x,vars)):[];if(!(obj instanceof Instance))throw new Error('Method target is not an Instance');
+     const allow={Destroy:()=>obj.Destroy(),ClearAllChildren:()=>obj.ClearAllChildren(),GetChildren:()=>obj.GetChildren(),GetDescendants:()=>obj.GetDescendants(),FindFirstChild:()=>obj.FindFirstChild(String(args[0]),!!args[1]),IsA:()=>obj.IsA(String(args[0])),AddChild:()=>obj.AddChild(args[0])};
+     if(!allow[method])throw new Error('Method '+method+' is not supported by the safe subset');allow[method]();continue}
+    m=stmt.match(/^(?:local\s+)?([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    if(m){vars.set(m[1],_evalLuaValue(m[2],vars));continue}
+    m=stmt.match(/^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*=\s*(.+)$/);
+    if(m){const at=m[1].lastIndexOf('.');if(at<0)throw new Error('Only local variable assignments or Instance properties are supported');const owner=_resolvePath(m[1].slice(0,at),vars),key=m[1].slice(at+1),value=_evalLuaValue(m[2],vars);if(!(owner instanceof Instance)||!(key in owner))throw new Error('Property '+key+' is not writable on '+m[1]);owner[key]=value;continue}
+    throw new Error('Unsupported statement on line '+(n+1)+': '+stmt);
+   }
+  }
+  output.textContent=logs.join('\n')+(logs.length?'\n':'')+'Script finished.';return true;
+ }catch(e){output.textContent=logs.join('\n')+(logs.length?'\n':'')+'Script error: '+e.message;return false}
+}
 
 const explorerPanel=document.getElementById('explorerPanel'),scriptPanel=document.getElementById('scriptPanel');
 document.getElementById('explorerBtn').onclick=()=>{explorerPanel.hidden=!explorerPanel.hidden;if(!explorerPanel.hidden)renderTree()};
