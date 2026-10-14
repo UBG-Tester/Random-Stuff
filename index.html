@@ -68,9 +68,13 @@ const xform = (m, p) => [
   m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],
   m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];
 // T * Ry(yaw) * S
-function modelMatrix(p, s, yaw) {
-  const c = Math.cos(yaw), n = Math.sin(yaw);
-  return new Float32Array([c*s[0],0,-n*s[0],0, 0,s[1],0,0, n*s[2],0,c*s[2],0, p[0],p[1],p[2],1]);
+function modelMatrix(p, s, yaw, rotation = null) {
+  const rx = rotation ? rotation[0] : 0, ry = rotation ? rotation[1] : yaw, rz = rotation ? rotation[2] : 0;
+  const sx=Math.sin(rx), cx=Math.cos(rx), sy=Math.sin(ry), cy=Math.cos(ry), sz=Math.sin(rz), cz=Math.cos(rz);
+  const r00=cz*cy, r10=sz*cy, r20=-sy;
+  const r01=cz*sy*sx-sz*cx, r11=sz*sy*sx+cz*cx, r21=cy*sx;
+  const r02=cz*sy*cx+sz*sx, r12=sz*sy*cx-cz*sx, r22=cy*cx;
+  return new Float32Array([r00*s[0],r10*s[0],r20*s[0],0, r01*s[1],r11*s[1],r21*s[1],0, r02*s[2],r12*s[2],r22*s[2],0, p[0],p[1],p[2],1]);
 }
 
 // Shared primitive pool: one copy of each shape in a single vertex/index buffer.
@@ -525,7 +529,7 @@ class Renderer {
     for (const [name, s] of Object.entries(this.shapes)) {
       const start = k;
       for (const p of visibleParts) if (p.shape === name) {
-        data.set(modelMatrix(p.pos, p.size, p.yaw || 0), k * 24); data.set([...p.color, 1], k * 24 + 16);
+        data.set(modelMatrix(p.pos, p.size, p.yaw || 0, p.rotation || null), k * 24); data.set([...p.color, 1], k * 24 + 16);
         data.set([p.rough ?? 0.5, p.metal ?? 0, p.emissive ?? 0, p.studs ? 1 : 0], k * 24 + 20); k++;
       }
       if (k > start) this.ranges.push({ count: s.count, first: s.first, base: s.base, n: k - start, start });
@@ -654,7 +658,7 @@ class Model extends Instance { constructor(name='Model') { super(name,'Model'); 
 class Part extends Instance {
   constructor(name='Part', shape='cube', pos=[0,1,0], size=[4,1,2], color=[.64,.64,.64], o={}) {
     super(name,'Part'); this._Shape=shape; this._Position=[...pos]; this._Size=[...size]; this._Color=[...color];
-    this._Yaw=Number(o.yaw ?? o.Yaw ?? 0); this._Roughness=Number(o.rough ?? o.Roughness ?? .5); this._Metalness=Number(o.metal ?? o.Metalness ?? 0);
+    this._Yaw=Number(o.yaw ?? o.Yaw ?? 0); this._Rotation=Array.isArray(o.rotation)?o.rotation.slice(0,3).map(Number):[0,this._Yaw,0]; this._Yaw=this._Rotation[1]; this._Roughness=Number(o.rough ?? o.Roughness ?? .5); this._Metalness=Number(o.metal ?? o.Metalness ?? 0);
     this._Emissive=Number(o.emissive ?? o.Emissive ?? 0); this._Studs=!!(o.studs ?? o.Studs); this._Transparency=Number(o.Transparency ?? 0);
     this._CanCollide=o.CanCollide ?? true; this._Anchored=o.Anchored ?? true; this._Material=o.Material ?? 'Plastic';
     this.AssemblyLinearVelocity=[0,0,0]; this._NetworkParentId=0;
@@ -664,9 +668,10 @@ class Part extends Instance {
   get Position(){return [...this._Position]} set Position(v){this._vector('_Position',v,'Position')}
   get Size(){return [...this._Size]} set Size(v){const s=v.slice(0,3).map(Number);if(s.length!==3||s.some(x=>!Number.isFinite(x)||x<=0))throw new TypeError('Size components must be positive');this._Size=s;this._changed('Size')}
   get Color(){return [...this._Color]} set Color(v){if(v&&!Array.isArray(v)&&'R' in v)v=[v.R,v.G,v.B];if(!Array.isArray(v)||v.length<3||!v.slice(0,3).every(Number.isFinite))throw new TypeError('Color must be a Color3');this._Color=v.slice(0,3).map(x=>Math.max(0,Math.min(1,x)));this._changed('Color')}
-  get CFrame(){return{Position:this.Position,Yaw:this._Yaw}} set CFrame(v){if(v.Position)this.Position=v.Position;if(Number.isFinite(v.Yaw))this.Yaw=v.Yaw}
+  get CFrame(){return{Position:this.Position,Orientation:this.Orientation,Yaw:this._Yaw}} set CFrame(v){if(v.Position)this.Position=v.Position;if(v.Orientation)this.Orientation=v.Orientation;else if(Number.isFinite(v.Yaw))this.Yaw=v.Yaw}
   get Shape(){return this._Shape} set Shape(v){const m={Block:'cube',Ball:'sphere',Cylinder:'cylinder',Wedge:'wedge',Cone:'cone',Cube:'cube'};v=m[v]||String(v).toLowerCase();if(!['cube','sphere','cylinder','wedge','cone'].includes(v))throw new Error('Unsupported Part.Shape: '+v);this._Shape=v;this._changed('Shape')}
-  get Yaw(){return this._Yaw} set Yaw(v){this._Yaw=Number(v)||0;this._changed('Yaw')}
+  get Yaw(){return this._Yaw} set Yaw(v){this._Yaw=Number(v)||0;this._Rotation[1]=this._Yaw;this._changed('Yaw')}
+  get Orientation(){return this._Rotation.map(v=>v*180/Math.PI)} set Orientation(v){if(!Array.isArray(v)||v.length<3||!v.slice(0,3).every(Number.isFinite))throw new TypeError('Orientation must be a Vector3 of degrees');this._Rotation=v.slice(0,3).map(x=>x*Math.PI/180);this._Yaw=this._Rotation[1];this._changed('Orientation')}
   get Transparency(){return this._Transparency} set Transparency(v){this._Transparency=Math.max(0,Math.min(1,Number(v)||0));this._changed('Transparency')}
   get CanCollide(){return this._CanCollide} set CanCollide(v){this._CanCollide=!!v;this._changed('CanCollide')}
   get Anchored(){return this._Anchored} set Anchored(v){this._Anchored=!!v;this._changed('Anchored')}
@@ -676,7 +681,7 @@ class Part extends Instance {
   get Emissive(){return this._Emissive} set Emissive(v){this._Emissive=Math.max(0,Number(v)||0);this._changed('Emissive')}
   get Studs(){return this._Studs} set Studs(v){this._Studs=!!v;this._changed('Studs')}
   get shape(){return this._Shape} get pos(){return this._Position} get size(){return this._Size} get color(){return this._Color}
-  get yaw(){return this._Yaw} get rough(){return this._Roughness} get metal(){return this._Metalness} get emissive(){return this._Emissive} get studs(){return this._Studs} get transparency(){return this._Transparency}
+  get yaw(){return this._Yaw} get rotation(){return this._Rotation} get rough(){return this._Roughness} get metal(){return this._Metalness} get emissive(){return this._Emissive} get studs(){return this._Studs} get transparency(){return this._Transparency}
   _setPositionRaw(v){this._Position=v}
   toRecord(){return{id:this.Id,parentId:this.Parent===Workspace?0:(this.Parent?this.Parent.Id:0),className:this.ClassName,name:this.Name,shape:this.Shape,pos:this.Position,size:this.Size,color:this.Color,yaw:this.Yaw,rough:this.Roughness,metal:this.Metalness,emissive:this.Emissive,transparency:this.Transparency,studs:this.Studs,CanCollide:this.CanCollide,Anchored:this.Anchored,Material:this.Material}}
 }
@@ -706,7 +711,7 @@ const Enum={Material:new Proxy({}, {get:(_,n)=>String(n)}),PartType:new Proxy({}
 const InstanceFactory={new:(kind='Part')=>{if(kind==='Part'||kind==='MeshPart'||kind==='WedgePart')return new Part(kind,kind==='WedgePart'?'wedge':'cube',[0,1,0],[4,1,2],[.64,.64,.64],{Anchored:false});if(kind==='Folder')return new Folder();if(kind==='Model')return new Model();if(kind==='WeldConstraint')return new WeldConstraint();if(kind==='SpringConstraint')return new SpringConstraint();if(kind==='RemoteEvent')return new RemoteEvent();throw new Error('Instance.new("'+kind+'") is unavailable in this prototype');}};
 window.Instance=InstanceFactory;window.Vector3=Vector3;window.Color3=Color3;window.CFrame=CFrame;
 function _markSceneDirty(){_renderDirty=true;if(_applyingRemote)return;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
-function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
+function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rotation:p.rotation,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
 Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node))parts.push(node);if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
 ReplicatedStorage.DescendantAdded.Connect(node=>{if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
 ReplicatedStorage.DescendantRemoving.Connect(node=>{_markSceneDirty()});
