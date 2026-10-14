@@ -1051,14 +1051,14 @@ document.getElementById('sceneFile').onchange=async e=>{
   if(file.size>256*1024*1024)throw new Error('Files larger than 256 MB are not supported in the browser importer.');
   let result;
   if(ext==='cblx')result=_loadCblx(await file.text());
-  else if(ext==='cbxm'){_applyRecords(_decodeGraph(await file.arrayBuffer(),'CBXM'),false);result={parts:parts.length,instances:parts.length,approximated:0,source:'CrimBlox .cbxm'}}
+  else if(ext==='cbxm'){const records=_decodeGraph(await file.arrayBuffer(),'CBXM');_applyRecords(records,false);result={parts:records.filter(r=>r.classId===1).length,instances:records.length,approximated:0,source:'CrimBlox .cbxm'}}
   else if(['rbxlx','rbxmx','xml'].includes(ext))result=_loadRobloxXml(await file.text(),{replaceWorld:ext==='rbxlx',sourceName:'.'+ext});
   else if(['rbxl','rbxm'].includes(ext)){
    const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
    if(_isXMLBuffer(bytes)){const text=new TextDecoder().decode(bytes);result=_loadRobloxXml(text,{replaceWorld:ext==='rbxl',sourceName:'XML content in .'+ext})}
    else result=await _loadRobloxBinary(buffer,{replaceWorld:ext==='rbxl',sourceName:'.'+ext});
   }else throw new Error('Unsupported file extension .'+ext+'. Supported: .rbxlx, .rbxl, .rbxm, .rbxmx, .cblx, .cbxm.');
-  const note='Imported '+file.name+': '+result.parts+' renderable parts, '+result.instances+' additional Instances'+(result.approximated?'; '+result.approximated+' mesh/union classes approximated by primitive geometry':'')+'.';
+  const note='Imported '+file.name+': '+result.parts+' renderable parts and '+Math.max(0,result.instances-result.parts)+' additional Instances'+(result.approximated?'; '+result.approximated+' mesh/union classes approximated by primitive geometry':'')+'.';
   document.getElementById('scriptOutput').textContent=note;console.info(note);alert(note);
  }catch(err){console.error('CrimBlox import failed',err);alert('CrimBlox import failed: '+(err&&err.message||err))}
  finally{e.target.value=''}
