@@ -1040,7 +1040,16 @@ function _loadCblx(text){
  }}finally{_applyingRemote=false}
  _markSceneDirty();renderTree();return{parts:count,instances:count,approximated:0,source:'CrimBlox .cblx'};
 }
-function _isXMLBuffer(bytes){const probe=new TextDecoder().decode(bytes.slice(0,64)).replace(/^\uFEFF/,'').trimStart();return probe.startsWith('<roblox')||probe.startsWith('<?xml')||probe.startsWith('<');}
+function _isXMLBuffer(bytes){
+ const probe=new TextDecoder().decode(bytes.slice(0,1024)).replace(/^\uFEFF/,'').trimStart();
+ // A real RBXL/RBXM binary file starts with "<roblox!" followed by non-text signature bytes.
+ // Do not classify it as XML just because the shared 7-character prefix matches.
+ if(probe.startsWith('<roblox!'))return false;
+ if(/^<\?xml(?:\s|\?>)/i.test(probe))return true;
+ if(/^<roblox(?:\s|>)/i.test(probe))return true;
+ if(/^<!DOCTYPE\s+roblox\b/i.test(probe))return true;
+ return false;
+}
 document.getElementById('saveXmlBtn').onclick=_saveCblx;
 document.getElementById('saveBinBtn').onclick=_saveCbxm;
 document.getElementById('importBtn').onclick=()=>document.getElementById('sceneFile').click();
