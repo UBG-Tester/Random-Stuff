@@ -113,8 +113,8 @@ function decode(buffer) {
 			const instLength = payload.uint32(true);
 			const instIds = ReadReferences(payload, instLength);
 			const isService = [];
-			for (let i = 0; i < instLength; i++) {
-				isService.push(payload.uint8() == 1);
+			if (hasService) {
+				for (let i = 0; i < instLength; i++) isService.push(payload.uint8() == 1);
 			}
 
 			// console.log("INST classId:", classId);
