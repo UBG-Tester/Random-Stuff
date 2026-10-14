@@ -981,7 +981,7 @@ function _importedNodeFromRecord(rec){
    const pos=_vec3(_getImportedProp(props,'Position')??cf?.Position,[0,0,0]);
    const size=_vec3(_getImportedProp(props,'Size')??_getImportedProp(props,'size'),[4,1,2]).map((x)=>Math.max(.01,Math.abs(x)));
    const mat=_normalMaterial(_getImportedProp(props,'Material'));
-   const options={rotation:_partRotation(props),Material:mat,Transparency:_numberProp(_getImportedProp(props,'Transparency'),0),Roughness:_numberProp(_getImportedProp(props,'Roughness'),.5),Metalness:_numberProp(_getImportedProp(props,'Reflectance'),0),Emissive:mat==='Neon'?1.15:_numberProp(_getImportedProp(props,'Emissive'),0),Anchored:_boolProp(_getImportedProp(props,'Anchored'),false),CanCollide:_boolProp(_getImportedProp(props,'CanCollide'),true)};
+   const options={rotation:_partRotation(props),Material:mat,Transparency:_numberProp(_getImportedProp(props,'Transparency'),0),Roughness:_numberProp(_getImportedProp(props,'Roughness'),.5),Metalness:_numberProp(_getImportedProp(props,'Reflectance'),0),Emissive:mat==='Neon'?1.15:_numberProp(_getImportedProp(props,'Emissive'),0),Anchored:_boolProp(_getImportedProp(props,'Anchored'),true),CanCollide:_boolProp(_getImportedProp(props,'CanCollide'),true)};
    const part=new Part(name,shape,pos,size,color,options);part.ClassName=cls;part.ImportedProperties=props;part._ImportedReferent=rec._referent||null;return part;
  }
  let node;
