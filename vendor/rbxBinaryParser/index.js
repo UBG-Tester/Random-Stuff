@@ -56,6 +56,8 @@ const signature = [
 ];
 
 function decode(buffer) {
+	if (!(buffer instanceof ArrayBuffer)) throw new TypeError("decode expects an ArrayBuffer");
+	if (buffer.byteLength < 32) throw new Error("File is too short to be a Roblox binary place/model");
 	const start = performance.now();
 	const data = new ByteReader(buffer);
 
@@ -65,8 +67,7 @@ function decode(buffer) {
 		sig.push(data.uint8());
 	}
 
-	console.assert(arraysEqual(sig, signature), "Invalid file signature.");
-	console.log("Valid file signature.");
+	if (!arraysEqual(sig, signature)) throw new Error("Invalid Roblox binary signature; expected an RBXL/RBXM binary file.");
 
 	// Get the version
 	var version = data.uint16(true);
@@ -76,6 +77,8 @@ function decode(buffer) {
 		classCount: data.uint32(true),
 		instanceCount: data.uint32(true),
 	};
+	if (version !== 0) throw new Error("Unsupported binary format version: " + version);
+	if (header.classCount > 100000 || header.instanceCount > 1000000) throw new Error("Roblox binary import exceeds safe limits.");
 	data.move(8);
 
 
@@ -194,11 +197,7 @@ function decode(buffer) {
 	}
 
 	// console.log("Output:", output);
-	console.log(
-		"Finished decoding file.\nTime elapsed:",
-		performance.now() - start,
-		"ms"
-	);
+
 
 	return output;
 }
