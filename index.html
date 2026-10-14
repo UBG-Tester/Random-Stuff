@@ -663,7 +663,7 @@ class Instance {
   get DescendantAdded() { return this._DescendantAdded || (this._DescendantAdded = new Signal()); }
   get DescendantRemoving() { return this._DescendantRemoving || (this._DescendantRemoving = new Signal()); }
   get Name() { return this._Name; }
-  set Name(v) { v = String(v); if (v === this._Name) return; this._Name = v; this._changed('Name'); }
+  set Name(v) { v = String(v); if (v === this._Name) return; this._Name = v; this._changed('Name'); if (!(this instanceof Part)) _markSceneDirty(); }
   get Parent() { return this._Parent; }
   set Parent(parent) {
     if (parent === this._Parent) return;
@@ -781,6 +781,7 @@ class PhysicsWorld {
   _resolve(body,other){if(!body.CanCollide||!other.CanCollide||body===other)return;const a=this._aabb(body),b=this._aabb(other),ov=[Math.min(a.max[0],b.max[0])-Math.max(a.min[0],b.min[0]),Math.min(a.max[1],b.max[1])-Math.max(a.min[1],b.min[1]),Math.min(a.max[2],b.max[2])-Math.max(a.min[2],b.min[2])];if(ov.some(v=>v<=0))return;let ax=0;if(ov[1]<ov[ax])ax=1;if(ov[2]<ov[ax])ax=2;const sign=a.c[ax]>=b.c[ax]?1:-1,p=body.Position;p[ax]+=sign*(ov[ax]+.0005);body._setPositionRaw(p);body.AssemblyLinearVelocity[ax]=0}
   _solveConstraints(dt,nodes){if(!this.ConstraintsEnabled)return;for(const c of nodes.filter(n=>n instanceof WeldConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){if(!c._offset)c._offset=sub(c.Part1.Position,c.Part0.Position);if(!c.Part1.Anchored){c.Part1._setPositionRaw(c.Part0.Position.map((v,i)=>v+c._offset[i]));c.Part1.AssemblyLinearVelocity=[...c.Part0.AssemblyLinearVelocity]}}for(const c of nodes.filter(n=>n instanceof SpringConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){const a=c.Part0,b=c.Part1,dv=sub(b.Position,a.Position),len=Math.hypot(...dv)||.0001,dir=dv.map(x=>x/len),rel=dot(sub(b.AssemblyLinearVelocity,a.AssemblyLinearVelocity),dir),force=(len-c.FreeLength)*c.Stiffness+rel*c.Damping;if(!a.Anchored)a.AssemblyLinearVelocity=a.AssemblyLinearVelocity.map((v,i)=>v+dir[i]*force*dt);if(!b.Anchored)b.AssemblyLinearVelocity=b.AssemblyLinearVelocity.map((v,i)=>v-dir[i]*force*dt)}}
   Step(dt){
+    if(_applyingRemote)return;
     if(!_movingParts.size&&!_physicsConstraints.size){this._accumulator=0;return}
     this._accumulator+=Math.min(Math.max(dt,0),.1);let changed=false;
     while(this._accumulator>=this.StepRate){
