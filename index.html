@@ -19,7 +19,7 @@ canvas{display:block;width:100%;height:100%}
 </style></head>
 <body><canvas id="c"></canvas>
 <div id="bar"><svg viewBox="0 0 24 24" aria-label="CrimBlox"><rect x="5" y="5" width="14" height="14" transform="rotate(-14 12 12)" fill="none" stroke="#cfcfcf" stroke-width="4" stroke-dasharray="42 14"/></svg>
-<button class="tb" id="explorerBtn">Explorer</button><button class="tb" id="scriptBtn">Script Lab</button><button class="tb" id="importBtn">Import Scene…</button><button class="tb" id="saveXmlBtn">Save .cblx</button><button class="tb" id="saveBinBtn">Save .cbxm</button><button class="tb" id="skyBtn">Load Skybox…</button><button class="tb" id="skyReset">Procedural Sky</button><input id="skyFile" type="file" accept="image/*" hidden><input id="sceneFile" type="file" accept=".cblx,.cbxm,.rbxlx,.xml" hidden></div>
+<button class="tb" id="explorerBtn">Explorer</button><button class="tb" id="scriptBtn">Script Lab</button><button class="tb" id="importBtn">Import Scene…</button><button class="tb" id="saveXmlBtn">Save .cblx</button><button class="tb" id="saveBinBtn">Save .cbxm</button><button class="tb" id="skyBtn">Load Skybox…</button><button class="tb" id="skyReset">Procedural Sky</button><input id="skyFile" type="file" accept="image/*" hidden><input id="sceneFile" type="file" accept=".cblx,.cbxm,.rbxlx,.rbxl,.rbxmx,.rbxm,.xml" hidden></div>
 <div id="hud">Loading…</div>
 <section id="explorerPanel" class="toolpanel" hidden><h3>WORKSPACE EXPLORER</h3><div id="tree"></div><div id="props"></div><div class="panel-actions"><button id="destroySelected">Destroy selected</button><button id="refreshTree">Refresh tree</button></div></section>
 <section id="scriptPanel" class="toolpanel" hidden><h3>CRIMBLOX SCRIPT LAB · SAFE LUA SUBSET</h3><textarea id="scriptCode" spellcheck="false">-- CrimBlox Lua-style starter script
@@ -899,15 +899,170 @@ function _saveCblx(){
  _downloadFile('CrimBloxWorld.cblx',new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n<CrimBlox version="1"><Workspace>\n'+rows+'\n</Workspace></CrimBlox>'],{type:'application/xml'}));
 }
 function _saveCbxm(){const bytes=_encodeGraph('CBXM',1,_wireNodes().filter(n=>n.Parent===Workspace||Workspace.GetDescendants().includes(n)));_downloadFile('CrimBloxWorld.cbxm',new Blob([bytes],{type:'application/octet-stream'}))}
-function _loadCblx(text){
- const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw new Error('Invalid XML document');
- let records=[...doc.querySelectorAll('CrimBlox Part, Workspace Part, Part')].map(e=>({name:e.getAttribute('name')||e.getAttribute('Name')||'ImportedPart',shape:e.getAttribute('shape')||e.getAttribute('Shape')||'cube',pos:[e.getAttribute('x')||e.getAttribute('X')||0,e.getAttribute('y')||e.getAttribute('Y')||1,e.getAttribute('z')||e.getAttribute('Z')||0].map(Number),size:[e.getAttribute('sx')||4,e.getAttribute('sy')||1,e.getAttribute('sz')||2].map(Number),color:[e.getAttribute('r')||.64,e.getAttribute('g')||.64,e.getAttribute('b')||.64].map(Number),yaw:Number(e.getAttribute('yaw')||0),rough:Number(e.getAttribute('rough')||.5),metal:Number(e.getAttribute('metal')||0),emissive:Number(e.getAttribute('emissive')||0),transparency:Number(e.getAttribute('transparency')||0),anchored:e.getAttribute('anchored')!=='false',collide:e.getAttribute('collide')!=='false',studs:e.getAttribute('studs')==='true',material:e.getAttribute('material')||'Plastic'}));
- if(!records.length){records=[...doc.querySelectorAll('Item[class="Part"]')].map(item=>{const get=n=>item.querySelector('Properties > *[name="'+n+'"]'),txt=n=>get(n)?.textContent?.trim(),vec=n=>{const e=get(n);if(!e)return[0,1,0];return['X','Y','Z'].map(k=>Number(e.querySelector(k)?.textContent||0))},color=()=>{const e=get('Color');return e?['R','G','B'].map(k=>Number(e.querySelector(k)?.textContent||.64)):[.64,.64,.64]};return{name:txt('Name')||'ImportedPart',shape:'cube',pos:vec('CFrame'),size:vec('size'),color:color(),yaw:0,rough:.5,metal:0,emissive:0,transparency:Number(txt('Transparency')||0),anchored:txt('Anchored')==='true',collide:txt('CanCollide')!=='false',studs:false,material:'Plastic'}})}
- if(!records.length)throw new Error('No Part records were found in this XML file');
- _applyingRemote=true;try{for(const q of records){const p=new Part(q.name,q.shape.toLowerCase(),q.pos,q.size,q.color,{Yaw:q.yaw,Roughness:q.rough,Metalness:q.metal,Emissive:q.emissive,Transparency:q.transparency,Anchored:q.anchored,CanCollide:q.collide,Studs:q.studs,Material:q.material});Workspace.AddChild(p)}}finally{_applyingRemote=false}_markSceneDirty();renderTree();
+
+function _xmlReadValue(el){
+ const type=String(el.tagName||'').toLowerCase(),txt=(el.textContent||'').trim();
+ const names=['x','y','z','r','g','b','r00','r01','r02','r10','r11','r12','r20','r21','r22','orientation','position'];
+ const isStructured=['vector2','vector3','vector2int16','vector3int16','color3','color3uint8','coordinateframe','cframe','udim','udim2','rect','ray','physicalproperties'].includes(type)||el.children.length>0&&['coordinateframe','vector3','color3','color3uint8'].includes(type);
+ if(isStructured){
+  const o={__xmlType:type};
+  for(const child of el.children){const k=child.tagName;const raw=(child.textContent||'').trim();const n=Number(raw);o[k]=raw!==''&&Number.isFinite(n)?n:raw}
+  if(type==='coordinateframe'||type==='cframe'){
+    o.Position={X:Number(o.X)||0,Y:Number(o.Y)||0,Z:Number(o.Z)||0};
+  }
+  return o;
+ }
+ if(type==='bool')return txt.toLowerCase()==='true'||txt==='1';
+ if(['token','int','int64','int32','float','double','number','brickcolor'].includes(type)){const n=Number(txt);return Number.isFinite(n)?n:0}
+ if(type==='null'||type==='content'&&el.querySelector('null'))return null;
+ return txt;
 }
-document.getElementById('saveXmlBtn').onclick=_saveCblx;document.getElementById('saveBinBtn').onclick=_saveCbxm;document.getElementById('importBtn').onclick=()=>document.getElementById('sceneFile').click();
-document.getElementById('sceneFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.name.toLowerCase().endsWith('.cbxm'))_applyRecords(_decodeGraph(await f.arrayBuffer(),'CBXM'),false);else _loadCblx(await f.text());document.getElementById('scriptOutput').textContent='Imported '+f.name}catch(err){alert('CrimBlox import failed: '+err.message)}e.target.value=''};
+function _xmlItemToRecord(item){
+ const className=item.getAttribute('class')||item.getAttribute('ClassName')||'Instance',props={};
+ for(const p of item.children){if(p.tagName!=='Properties')continue;for(const e of p.children){const name=e.getAttribute('name');if(name)props[name]=_xmlReadValue(e)}}
+ const name=String(_getImportedProp(props,'Name')??item.getAttribute('name')??className);
+ return {ClassName:className,Name:name,_props:props,Children:[...item.children].filter(c=>c.tagName==='Item').map(_xmlItemToRecord),_referent:item.getAttribute('referent')||null};
+}
+function _getImportedProp(node,name){
+ const key=String(name).toLowerCase();
+ const props=node&&node._props;
+ if(props){for(const k of Object.keys(props))if(k.toLowerCase()===key)return props[k]}
+ if(node){for(const k of Object.keys(node)){if(['children','classname','_props','_referent'].includes(k.toLowerCase()))continue;if(k.toLowerCase()===key)return node[k]}}
+ return undefined;
+}
+function _vec3(value,fallback=[0,0,0]){
+ if(value&&typeof value==='object'&&!Array.isArray(value)&&value.Position)value=value.Position;
+ if(Array.isArray(value)&&value.length>=3){const a=value.slice(0,3).map(Number);return a.every(Number.isFinite)?a:fallback.slice()}
+ if(value&&typeof value==='object'){const a=[value.X??value.x,value.Y??value.y,value.Z??value.z].map(Number);if(a.every(Number.isFinite))return a}
+ return fallback.slice();
+}
+function _color3(value,fallback=[.64,.64,.64]){
+ if(value&&typeof value==='object'&&value.Color)value=value.Color;
+ if(Array.isArray(value)){const a=value.slice(0,3).map(Number);if(a.length===3&&a.every(Number.isFinite))return a.some(v=>v>1)?a.map(v=>Math.max(0,Math.min(255,v))/255):a.map(v=>Math.max(0,Math.min(1,v)))}
+ if(value&&typeof value==='object'){const a=[value.R??value.r,value.G??value.g,value.B??value.b].map(Number);if(a.every(Number.isFinite))return a.some(v=>v>1)?a.map(v=>Math.max(0,Math.min(255,v))/255):a.map(v=>Math.max(0,Math.min(1,v)))}
+ return fallback.slice();
+}
+function _boolProp(value,fallback){if(value===undefined||value===null||value==='')return fallback;if(typeof value==='boolean')return value;if(typeof value==='number')return value!==0;return String(value).toLowerCase()==='true'||String(value)==='1'}
+function _numberProp(value,fallback){const n=Number(value);return value===undefined||value===null||value===''||!Number.isFinite(n)?fallback:n}
+function _normalShape(className,shape){
+ const cls=String(className||'').toLowerCase(),str=String(shape??'').toLowerCase();
+ if(cls==='wedgepart'||cls==='cornerwedgepart')return'wedge';
+ if(cls==='trusspart')return'cube';
+ if(cls==='partoperation'||cls==='unionoperation'||cls==='negateoperation'||cls==='intersectoperation'||cls==='meshpart'||cls==='seat'||cls==='vehicleseat'||cls==='spawnlocation')return'cube';
+ if(['0','ball','sphere'].includes(str))return'sphere';
+ if(['2','cylinder'].includes(str))return'cylinder';
+ if(['3','wedge','wedgepart','cornerwedgepart'].includes(str))return'wedge';
+ if(['4','cone'].includes(str))return'cone';
+ return'cube';
+}
+const _robloxMaterialTokens={256:'Plastic',272:'SmoothPlastic',288:'Neon',512:'Wood',528:'WoodPlanks',784:'Marble',800:'Slate',816:'Concrete',832:'Granite',848:'Brick',864:'Pebble',880:'Sand',896:'Fabric',1280:'Grass',1296:'Asphalt',1312:'Rock',1344:'Sandstone',1360:'Mud',1376:'Basalt',1392:'Limestone',1408:'Pavement',1424:'Cobblestone',1536:'Ice',1552:'Snow',1568:'Glacier',1584:'Salt',1600:'Lava',1616:'Foil',1632:'DiamondPlate',1648:'CorrodedMetal',1664:'Metal'};
+function _normalMaterial(v){
+ if(typeof v==='number'||(typeof v==='string'&&/^\d+$/.test(v)))return _robloxMaterialTokens[Number(v)]||'Plastic';
+ const s=String(v??'Plastic').replace(/^Enum\.Material\./,'');return s==='undefined'||s==='null'||!s?'Plastic':s;
+}
+function _partRotation(props){
+ const cf=_getImportedProp(props,'CFrame')??_getImportedProp(props,'CoordinateFrame');
+ if(cf&&cf.Orientation){const o=cf.Orientation;return _vec3(o).map(x=>x*Math.PI/180)}
+ if(cf&&['R00','R01','R02','R10','R11','R12','R20','R21','R22'].every(k=>Number.isFinite(Number(cf[k])))){
+   const rx=Math.atan2(Number(cf.R21),Number(cf.R22)),ry=Math.asin(Math.max(-1,Math.min(1,-Number(cf.R20)))),rz=Math.atan2(Number(cf.R10),Number(cf.R00));return[rx,ry,rz]
+ }
+ const orient=_getImportedProp(props,'Orientation')??_getImportedProp(props,'Rotation');
+ if(orient!==undefined)return _vec3(orient).map(x=>x*Math.PI/180);
+ return[0,0,0];
+}
+function _importedNodeFromRecord(rec){
+ const cls=String(rec.ClassName||rec.className||'Instance'),props=rec._props||rec;
+ const name=String(rec.Name??_getImportedProp(props,'Name')??cls);
+ const colorValue=_getImportedProp(props,'Color')??_getImportedProp(props,'Color3')??_getImportedProp(props,'BrickColor');
+ const color=_color3(colorValue);
+ if(_basePartClasses.has(cls)){
+   const shape=_normalShape(cls,_getImportedProp(props,'shape')??_getImportedProp(props,'Shape'));
+   const cf=_getImportedProp(props,'CFrame')??_getImportedProp(props,'CoordinateFrame');
+   const pos=_vec3(_getImportedProp(props,'Position')??cf?.Position,[0,0,0]);
+   const size=_vec3(_getImportedProp(props,'Size')??_getImportedProp(props,'size'),[4,1,2]).map((x)=>Math.max(.01,Math.abs(x)));
+   const mat=_normalMaterial(_getImportedProp(props,'Material'));
+   const options={rotation:_partRotation(props),Material:mat,Transparency:_numberProp(_getImportedProp(props,'Transparency'),0),Roughness:_numberProp(_getImportedProp(props,'Roughness'),.5),Metalness:_numberProp(_getImportedProp(props,'Reflectance'),0),Emissive:mat==='Neon'?1.15:_numberProp(_getImportedProp(props,'Emissive'),0),Anchored:_boolProp(_getImportedProp(props,'Anchored'),false),CanCollide:_boolProp(_getImportedProp(props,'CanCollide'),true)};
+   const part=new Part(name,shape,pos,size,color,options);part.ClassName=cls;part.ImportedProperties=props;part._ImportedReferent=rec._referent||null;return part;
+ }
+ let node;
+ if(cls==='Folder')node=new Folder(name);
+ else if(cls==='Model'||cls==='Tool'||cls==='Accessory')node=new Model(name);
+ else if(cls==='RemoteEvent')node=new RemoteEvent(name);
+ else node=new Instance(name,cls);
+ node.ImportedProperties=props;node._ImportedReferent=rec._referent||null;return node;
+}
+const _basePartClasses=new Set(['Part','MeshPart','UnionOperation','NegateOperation','IntersectOperation','PartOperation','WedgePart','CornerWedgePart','TrussPart','SpawnLocation','Seat','VehicleSeat','SkateboardPlatform']);
+const _serviceInstances={Workspace,ReplicatedStorage,ServerStorage,Players,Lighting,RunService};
+function _importTreeRoots(roots,{replaceWorld=false,sourceName='Roblox file'}={}){
+ if(!Array.isArray(roots)||!roots.length)throw new Error('The file contains no importable Roblox Instances.');
+ _applyingRemote=true;let partCount=0,nodeCount=0,meshApprox=0;
+ try{
+  if(replaceWorld){Workspace.ClearAllChildren();ReplicatedStorage.ClearAllChildren();ServerStorage.ClearAllChildren()}
+  const walk=(rec,parent=null)=>{
+   const cls=String(rec.ClassName||rec.className||'Instance');
+   let node;
+   if(!parent&&_serviceInstances[cls]){node=_serviceInstances[cls];const svcProps=rec._props||rec;for(const [prop,val] of Object.entries(svcProps)){if(prop.startsWith('_')||['ClassName','Children','Name','referent'].includes(prop))continue;const actual=Object.keys(svcProps).find(k=>k.toLowerCase()===prop.toLowerCase());if(actual&&actual in node&&actual!=='Parent'&&actual!=='Children'){try{node[actual]=val}catch{}}}}
+   else{node=_importedNodeFromRecord(rec);const destination=parent||Workspace;destination.AddChild(node);nodeCount++;if(node instanceof Part){partCount++;if(['MeshPart','UnionOperation','NegateOperation','IntersectOperation','PartOperation','TrussPart'].includes(cls))meshApprox++}}
+   const children=Array.isArray(rec.Children)?rec.Children:Array.isArray(rec.children)?rec.children:[];
+   for(const child of children)walk(child,node);
+  };
+  for(const root of roots)walk(root,null);
+ }finally{_applyingRemote=false}
+ _markSceneDirty();renderTree();
+ return{parts:partCount,instances:nodeCount,approximated:meshApprox,source:sourceName};
+}
+function _loadRobloxXml(text,{replaceWorld=false,sourceName='Roblox XML'}={}){
+ const doc=new DOMParser().parseFromString(text,'application/xml');
+ if(doc.querySelector('parsererror'))throw new Error('The XML is malformed. Export the place/model as a valid .rbxlx or .rbxmx file.');
+ const root=doc.documentElement;if(!root||root.tagName.toLowerCase()!=='roblox')throw new Error('This XML file is not a Roblox .rbxlx/.rbxmx document.');
+ const items=[...root.children].filter(e=>e.tagName==='Item').map(_xmlItemToRecord);
+ if(!items.length)throw new Error('No Roblox Item records were found in this XML file.');
+ return _importTreeRoots(items,{replaceWorld,sourceName});
+}
+async function _loadRobloxBinary(buffer,{replaceWorld=false,sourceName='Roblox binary'}={}){
+ const bytes=buffer instanceof ArrayBuffer?new Uint8Array(buffer):new Uint8Array(buffer.buffer,buffer.byteOffset,buffer.byteLength);
+ const sig=[0x3c,0x72,0x6f,0x62,0x6c,0x6f,0x78,0x21,0x89,0xff,0x0d,0x0a,0x1a,0x0a];
+ if(bytes.length>=14&&sig.every((v,i)=>bytes[i]===v)===false)throw new Error('Invalid .rbxl/.rbxm binary header.');
+ const mod=await import('./vendor/rbxBinaryParser/index.js');
+ const roots=mod.decode(buffer instanceof ArrayBuffer?buffer:buffer.buffer.slice(buffer.byteOffset,buffer.byteOffset+buffer.byteLength)).filter(Boolean);
+ return _importTreeRoots(roots,{replaceWorld,sourceName});
+}
+function _loadCblx(text){
+ const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw new Error('Invalid CrimBlox XML document.');
+ const rows=[...doc.querySelectorAll('CrimBlox Part, Workspace Part, Part')].filter(e=>e.closest('CrimBlox')||e.hasAttribute('name'));
+ if(!rows.length)throw new Error('No CrimBlox parts were found in the .cblx file.');
+ _applyingRemote=true;let count=0;
+ try{for(const e of rows){const pick=(...names)=>{for(const n of names){const v=e.getAttribute(n);if(v!==null)return v}return null},num=(v,d)=>v===null?d:Number(v);
+  const name=pick('name','Name')||'ImportedPart',shape=_normalShape('Part',pick('shape','Shape')||'cube');
+  const pos=[num(pick('x','X'),0),num(pick('y','Y'),1),num(pick('z','Z'),0)],size=[num(pick('sx'),4),num(pick('sy'),1),num(pick('sz'),2)];
+  const color=[num(pick('r'),.64),num(pick('g'),.64),num(pick('b'),.64)],rotation=[0,num(pick('yaw'),0),0];
+  const p=new Part(name,shape,pos,size,color,{rotation,Anchored:pick('anchored')!=='false',CanCollide:pick('collide')!=='false',Transparency:num(pick('transparency'),0),Roughness:num(pick('rough'),.5),Metalness:num(pick('metal'),0),Emissive:num(pick('emissive'),0),Material:pick('material')||'Plastic',Studs:pick('studs')==='true'});Workspace.AddChild(p);count++
+ }}finally{_applyingRemote=false}
+ _markSceneDirty();renderTree();return{parts:count,instances:count,approximated:0,source:'CrimBlox .cblx'};
+}
+function _isXMLBuffer(bytes){const probe=new TextDecoder().decode(bytes.slice(0,64)).replace(/^\uFEFF/,'').trimStart();return probe.startsWith('<roblox')||probe.startsWith('<?xml')||probe.startsWith('<');}
+document.getElementById('saveXmlBtn').onclick=_saveCblx;
+document.getElementById('saveBinBtn').onclick=_saveCbxm;
+document.getElementById('importBtn').onclick=()=>document.getElementById('sceneFile').click();
+document.getElementById('sceneFile').onchange=async e=>{
+ const file=e.target.files&&e.target.files[0];if(!file)return;
+ const ext=(file.name.split('.').pop()||'').toLowerCase();
+ try{
+  if(file.size>256*1024*1024)throw new Error('Files larger than 256 MB are not supported in the browser importer.');
+  let result;
+  if(ext==='cblx')result=_loadCblx(await file.text());
+  else if(ext==='cbxm')result=(()=>{_applyRecords(_decodeGraph(file.arrayBuffer(),'CBXM'),false);return{parts:parts.length,instances:parts.length,approximated:0,source:'CrimBlox .cbxm'}})();
+  else if(['rbxlx','rbxmx','xml'].includes(ext))result=_loadRobloxXml(await file.text(),{replaceWorld:ext==='rbxlx',sourceName:'.'+ext});
+  else if(['rbxl','rbxm'].includes(ext)){
+   const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
+   if(_isXMLBuffer(bytes)){const text=new TextDecoder().decode(bytes);result=_loadRobloxXml(text,{replaceWorld:ext==='rbxl',sourceName:'XML content in .'+ext})}
+   else result=await _loadRobloxBinary(buffer,{replaceWorld:ext==='rbxl',sourceName:'.'+ext});
+  }else throw new Error('Unsupported file extension .'+ext+'. Supported: .rbxlx, .rbxl, .rbxm, .rbxmx, .cblx, .cbxm.');
+  const note='Imported '+file.name+': '+result.parts+' renderable parts, '+result.instances+' additional Instances'+(result.approximated?'; '+result.approximated+' mesh/union classes approximated by primitive geometry':'')+'.';
+  document.getElementById('scriptOutput').textContent=note;console.info(note);alert(note);
+ }catch(err){console.error('CrimBlox import failed',err);alert('CrimBlox import failed: '+(err&&err.message||err))}
+ finally{e.target.value=''}
+};
 const _networkParam=new URLSearchParams(location.search).get('network'),_networkURL=new URLSearchParams(location.search).get('server')||'wss://crimblox-network.onrender.com';
 if(_networkParam!=='off'&&_networkURL!=='local'){_network=new NetworkClient(_networkURL);window.CrimBloxNetwork=_network;_network.start()}else{window.CrimBloxNetwork=null}
 
