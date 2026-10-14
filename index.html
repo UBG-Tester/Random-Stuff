@@ -955,7 +955,7 @@ function _normalShape(className,shape){
  if(['4','cone'].includes(str))return'cone';
  return'cube';
 }
-const _robloxMaterialTokens={256:'Plastic',272:'SmoothPlastic',288:'Neon',512:'Wood',528:'WoodPlanks',784:'Marble',800:'Slate',816:'Concrete',832:'Granite',848:'Brick',864:'Pebble',880:'Sand',896:'Fabric',1280:'Grass',1296:'Asphalt',1312:'Rock',1344:'Sandstone',1360:'Mud',1376:'Basalt',1392:'Limestone',1408:'Pavement',1424:'Cobblestone',1536:'Ice',1552:'Snow',1568:'Glacier',1584:'Salt',1600:'Lava',1616:'Foil',1632:'DiamondPlate',1648:'CorrodedMetal',1664:'Metal'};
+const _robloxMaterialTokens={256:'Plastic',272:'SmoothPlastic',288:'Neon',512:'Wood',528:'WoodPlanks',784:'Marble',788:'Basalt',800:'Slate',804:'CrackedLava',816:'Concrete',820:'Limestone',832:'Granite',836:'Pavement',848:'Brick',864:'Pebble',880:'Cobblestone',896:'Rock',912:'Sandstone',928:'CorrodedMetal',944:'DiamondPlate',960:'Foil',976:'Metal',1280:'Grass',1284:'LeafyGrass',1296:'Sand',1312:'Fabric',1328:'Snow',1344:'Mud',1360:'Ground',1376:'Asphalt',1392:'Salt',1536:'Ice',1552:'Glacier',1568:'Glass'};
 function _normalMaterial(v){
  if(typeof v==='number'||(typeof v==='string'&&/^\d+$/.test(v)))return _robloxMaterialTokens[Number(v)]||'Plastic';
  const s=String(v??'Plastic').replace(/^Enum\.Material\./,'');return s==='undefined'||s==='null'||!s?'Plastic':s;
@@ -1051,7 +1051,7 @@ document.getElementById('sceneFile').onchange=async e=>{
   if(file.size>256*1024*1024)throw new Error('Files larger than 256 MB are not supported in the browser importer.');
   let result;
   if(ext==='cblx')result=_loadCblx(await file.text());
-  else if(ext==='cbxm')result=(()=>{_applyRecords(_decodeGraph(file.arrayBuffer(),'CBXM'),false);return{parts:parts.length,instances:parts.length,approximated:0,source:'CrimBlox .cbxm'}})();
+  else if(ext==='cbxm'){_applyRecords(_decodeGraph(await file.arrayBuffer(),'CBXM'),false);result={parts:parts.length,instances:parts.length,approximated:0,source:'CrimBlox .cbxm'}}
   else if(['rbxlx','rbxmx','xml'].includes(ext))result=_loadRobloxXml(await file.text(),{replaceWorld:ext==='rbxlx',sourceName:'.'+ext});
   else if(['rbxl','rbxm'].includes(ext)){
    const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
