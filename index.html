@@ -417,12 +417,13 @@ fn srgb(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.
 
 
 
-const MAX_INST = 20000, CASCADES = 3, SHADOW_SIZE = 2048, BLOOM = 5, REACH = 200, MSAA = 4, SKY_SIZE = 1024;
+const _isCrOS = /CrOS/i.test(navigator.userAgent), _lowMemoryDevice = _isCrOS || ((navigator.deviceMemory || 8) <= 4 && (navigator.hardwareConcurrency || 8) <= 4);
+const MAX_INST = 50000, CASCADES = 3, SHADOW_SIZE = 2048, BLOOM = 5, REACH = 200, MSAA = 4, SKY_SIZE = 1024;
 const ADD = { color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' } };
 
 class Renderer {
   static async create(canvas) { const r = new Renderer(canvas); await r.init(); return r; }
-  constructor(canvas) { this.canvas = canvas; this.w = 0; this.h = 0; this.ranges = []; this.skyMode = 0; this.onError = null; }
+  constructor(canvas) { this.canvas = canvas; this.w = 0; this.h = 0; this.ranges = []; this.skyMode = 0; this.onError = null; this.sourceParts = []; this.renderedCount = 0; this.totalParts = 0; this.truncated = false; this._lastCullPose = null; this._nextCullTime = 0; }
 
   _buf(data, usage) {
     const b = this.device.createBuffer({ size: data.byteLength, usage: usage | GPUBufferUsage.COPY_DST });
@@ -521,18 +522,44 @@ class Renderer {
     this.w = w; this.h = h;
   }
 
-  // part: {shape, pos, size, yaw, color (sRGB 0..1), rough, metal, emissive, studs}. One contiguous run per shape.
-  upload(parts) {
-    const visibleParts = parts.filter(p => (p.transparency ?? 0) < 1);
-    if (visibleParts.length > MAX_INST) throw new Error(`Too many parts (max ${MAX_INST})`);
+  // Cull off-screen parts before uploading. The complete imported scene remains in memory.
+  upload(parts, cam = null) {
+    this.sourceParts = parts;
+    this._buildInstances(parts, cam);
+    this._lastCullPose = cam ? { pos: [...cam.pos], yaw: cam.yaw, pitch: cam.pitch } : null;
+    this._nextCullTime = 0;
+  }
+  _buildInstances(parts, cam = null) {
+    let visibleParts = parts.filter(p => (p.transparency ?? 0) < 1);
+    this.totalParts = visibleParts.length;
+    if (cam && visibleParts.length) {
+      const aspect = (this.w && this.h) ? this.w / this.h : innerWidth / Math.max(innerHeight, 1);
+      const fwd = [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), -Math.cos(cam.yaw) * Math.cos(cam.pitch)];
+      const right = [Math.cos(cam.yaw), 0, Math.sin(cam.yaw)];
+      const up = cross(right, fwd), tanV = Math.tan(cam.fov / 2), tanH = tanV * aspect;
+      visibleParts = visibleParts.filter(p => {
+        const pos = p.pos || [0, 0, 0], size = p.size || [1, 1, 1];
+        const radius = Math.hypot(size[0], size[1], size[2]) * 0.5;
+        const delta = [pos[0] - cam.pos[0], pos[1] - cam.pos[1], pos[2] - cam.pos[2]];
+        const depth = dot(delta, fwd);
+        if (depth < -radius || depth > cam.far + radius) return false;
+        const side = Math.abs(dot(delta, right)), vertical = Math.abs(dot(delta, up));
+        return side <= Math.max(0, depth) * tanH * 1.35 + radius &&
+               vertical <= Math.max(0, depth) * tanV * 1.35 + radius;
+      });
+    }
+    this.truncated = visibleParts.length > MAX_INST;
+    if (this.truncated) visibleParts = visibleParts.slice(0, MAX_INST);
+    this.renderedCount = visibleParts.length;
     const data = new Float32Array(visibleParts.length * 24); this.ranges = []; let k = 0;
-    for (const [name, s] of Object.entries(this.shapes)) {
+    for (const [name, sh] of Object.entries(this.shapes)) {
       const start = k;
       for (const p of visibleParts) if (p.shape === name) {
-        data.set(modelMatrix(p.pos, p.size, p.yaw || 0, p.rotation || null), k * 24); data.set([...p.color, 1], k * 24 + 16);
+        data.set(modelMatrix(p.pos, p.size, p.yaw || 0, p.rotation || null), k * 24);
+        data.set([...p.color, 1], k * 24 + 16);
         data.set([p.rough ?? 0.5, p.metal ?? 0, p.emissive ?? 0, p.studs ? 1 : 0], k * 24 + 20); k++;
       }
-      if (k > start) this.ranges.push({ count: s.count, first: s.first, base: s.base, n: k - start, start });
+      if (k > start) this.ranges.push({ count: sh.count, first: sh.first, base: sh.base, n: k - start, start });
     }
     this.device.queue.writeBuffer(this.instBuf, 0, data);
   }
@@ -557,6 +584,16 @@ class Renderer {
   }
 
   render(cam, env, time = 0) {
+    if (time >= this._nextCullTime) {
+      this._nextCullTime = time + 0.15;
+      const prev = this._lastCullPose;
+      const moved = !prev || Math.hypot(cam.pos[0]-prev.pos[0], cam.pos[1]-prev.pos[1], cam.pos[2]-prev.pos[2]) > 0.5 ||
+        Math.abs(cam.yaw-prev.yaw) > 0.02 || Math.abs(cam.pitch-prev.pitch) > 0.02;
+      if (moved && this.sourceParts.length) {
+        this._buildInstances(this.sourceParts, cam);
+        this._lastCullPose = { pos: [...cam.pos], yaw: cam.yaw, pitch: cam.pitch };
+      }
+    }
     const d = this.device, w = this.canvas.width, h = this.canvas.height;
     if (w !== this.w || h !== this.h) this._resize(w, h);
     const aspect = w / h, th = Math.tan(cam.fov / 2), toSun = norm(env.sunDir), f = new Float32Array(100);
@@ -596,7 +633,7 @@ class Renderer {
 
 
 const canvas = document.getElementById('c'), hud = document.getElementById('hud');
-const fit = () => { const k = Math.min(devicePixelRatio || 1, 2); canvas.width = Math.max(1, innerWidth * k | 0); canvas.height = Math.max(1, innerHeight * k | 0); };
+const fit = () => { const k = Math.min(devicePixelRatio || 1, _lowMemoryDevice ? 1.25 : 2); canvas.width = Math.max(1, innerWidth * k | 0); canvas.height = Math.max(1, innerHeight * k | 0); };
 fit(); addEventListener('resize', fit);
 
 // Classic BrickColor palette (name -> sRGB hex)
@@ -605,7 +642,7 @@ const BC = { 'Bright red': 0xc4281c, 'Bright yellow': 0xf5cd30, 'Bright blue': 0
   'Brick yellow': 0xd7c59a, 'Cool yellow': 0xfdea8d, 'Reddish brown': 0x694028 };
 const rgb = n => { const h = BC[n]; return [(h >> 16 & 255) / 255, (h >> 8 & 255) / 255, (h & 255) / 255]; };
 
-const parts = [];
+const parts = [], _partIndex = new Map(), _movingParts = new Set(), _physicsConstraints = new Set();
 let _instanceId = 1, _applyingRemote = false, _renderDirty = true, _sceneRenderer = null, _network = null, _selectedInstance = null, _runtimeUIReady = false;
 const _idPrefix = ((crypto.getRandomValues(new Uint32Array(1))[0] & 0x000fffff) << 12) >>> 0;
 const _allocateId = () => ((_idPrefix + _instanceId++) >>> 0);
@@ -618,9 +655,13 @@ class Signal {
 class Instance {
   constructor(name = 'Instance', className = 'Instance') {
     this.Id = _allocateId(); this.ClassName = className; this._Name = String(name); this._Parent = null; this.Children = [];
-    this.Changed = new Signal(); this.Destroying = new Signal(); this.AncestryChanged = new Signal();
-    this.DescendantAdded = new Signal(); this.DescendantRemoving = new Signal(); this._propertySignals = new Map(); this._destroyed = false;
+    this._Changed = null; this._Destroying = null; this._AncestryChanged = null; this._DescendantAdded = null; this._DescendantRemoving = null; this._propertySignals = null; this._destroyed = false;
   }
+  get Changed() { return this._Changed || (this._Changed = new Signal()); }
+  get Destroying() { return this._Destroying || (this._Destroying = new Signal()); }
+  get AncestryChanged() { return this._AncestryChanged || (this._AncestryChanged = new Signal()); }
+  get DescendantAdded() { return this._DescendantAdded || (this._DescendantAdded = new Signal()); }
+  get DescendantRemoving() { return this._DescendantRemoving || (this._DescendantRemoving = new Signal()); }
   get Name() { return this._Name; }
   set Name(v) { v = String(v); if (v === this._Name) return; this._Name = v; this._changed('Name'); }
   get Parent() { return this._Parent; }
@@ -631,17 +672,17 @@ class Instance {
     const subtree = [this, ...this.GetDescendants()], old = this._Parent;
     if (old) {
       const i = old.Children.indexOf(this); if (i >= 0) old.Children.splice(i, 1);
-      for (const node of subtree) for (let a = old; a; a = a.Parent) a.DescendantRemoving.Fire(node);
+      for (const node of subtree) for (let a = old; a; a = a.Parent) a._DescendantRemoving?.Fire(node);
     }
     this._Parent = parent;
     if (parent) {
       parent.Children.push(this);
-      for (const node of subtree) for (let a = parent; a; a = a.Parent) a.DescendantAdded.Fire(node);
+      for (const node of subtree) for (let a = parent; a; a = a.Parent) a._DescendantAdded?.Fire(node);
     }
-    this.AncestryChanged.Fire(this, parent); this._changed('Parent'); _markSceneDirty();
+    this._AncestryChanged?.Fire(this, parent); this._changed('Parent'); _markSceneDirty();
   }
-  _changed(property) { this.Changed.Fire(property); const sig = this._propertySignals.get(property); if (sig) sig.Fire(); }
-  GetPropertyChangedSignal(name) { if (!this._propertySignals.has(name)) this._propertySignals.set(name, new Signal()); return this._propertySignals.get(name); }
+  _changed(property) { this._Changed?.Fire(property); const sig = this._propertySignals?.get(property); if (sig) sig.Fire(); }
+  GetPropertyChangedSignal(name) { if (!this._propertySignals) this._propertySignals = new Map(); if (!this._propertySignals.has(name)) this._propertySignals.set(name, new Signal()); return this._propertySignals.get(name); }
   AddChild(child) { child.Parent = this; return child; }
   RemoveChild(child) { if (child.Parent === this) child.Parent = null; return child; }
   GetChildren() { return [...this.Children]; }
@@ -651,7 +692,7 @@ class Instance {
   GetFullName() { return this.Parent ? this.Parent.GetFullName() + '.' + this.Name : this.Name; }
   IsA(className) { return this.ClassName === className || (className === 'BasePart' && this instanceof Part) || (className === 'PVInstance' && this instanceof Part); }
   ClearAllChildren() { for (const c of [...this.Children]) c.Destroy(); }
-  Destroy() { if (this._destroyed) return; this.Destroying.Fire(this); if (_network && !_applyingRemote && (this instanceof Part || this instanceof Folder || this instanceof Model)) _network.sendDestroy(this.Id); this.ClearAllChildren(); this.Parent = null; this._destroyed = true; }
+  Destroy() { if (this._destroyed) return; this._Destroying?.Fire(this); if (_network && !_applyingRemote && (this instanceof Part || this instanceof Folder || this instanceof Model)) _network.sendDestroy(this.Id); this.ClearAllChildren(); this.Parent = null; this._destroyed = true; }
 }
 class Folder extends Instance { constructor(name='Folder') { super(name,'Folder'); } }
 class Model extends Instance { constructor(name='Model') { super(name,'Model'); this.PrimaryPart=null; } }
@@ -674,7 +715,7 @@ class Part extends Instance {
   get Orientation(){return this._Rotation.map(v=>v*180/Math.PI)} set Orientation(v){if(!Array.isArray(v)||v.length<3||!v.slice(0,3).every(Number.isFinite))throw new TypeError('Orientation must be a Vector3 of degrees');this._Rotation=v.slice(0,3).map(x=>x*Math.PI/180);this._Yaw=this._Rotation[1];this._changed('Orientation')}
   get Transparency(){return this._Transparency} set Transparency(v){this._Transparency=Math.max(0,Math.min(1,Number(v)||0));this._changed('Transparency')}
   get CanCollide(){return this._CanCollide} set CanCollide(v){this._CanCollide=!!v;this._changed('CanCollide')}
-  get Anchored(){return this._Anchored} set Anchored(v){this._Anchored=!!v;this._changed('Anchored')}
+  get Anchored(){return this._Anchored} set Anchored(v){this._Anchored=!!v;if(this._Anchored)_movingParts.delete(this);else if(_isInWorkspacePart(this))_movingParts.add(this);this._changed('Anchored')}
   get Material(){return this._Material} set Material(v){this._Material=String(v).replace(/^Enum\.Material\./,'');if(this._Material==='Neon')this._Emissive=Math.max(this._Emissive,1.1);this._changed('Material')}
   get Roughness(){return this._Roughness} set Roughness(v){this._Roughness=Math.max(.05,Math.min(1,Number(v)));this._changed('Roughness')}
   get Metalness(){return this._Metalness} set Metalness(v){this._Metalness=Math.max(0,Math.min(1,Number(v)));this._changed('Metalness')}
@@ -710,19 +751,52 @@ const CFrame={new:(x=0,y=0,z=0,yaw=0)=>({Position:[Number(x),Number(y),Number(z)
 const Enum={Material:new Proxy({}, {get:(_,n)=>String(n)}),PartType:new Proxy({}, {get:(_,n)=>String(n)})};
 const InstanceFactory={new:(kind='Part')=>{if(kind==='Part'||kind==='MeshPart'||kind==='WedgePart')return new Part(kind,kind==='WedgePart'?'wedge':'cube',[0,1,0],[4,1,2],[.64,.64,.64],{Anchored:false});if(kind==='Folder')return new Folder();if(kind==='Model')return new Model();if(kind==='WeldConstraint')return new WeldConstraint();if(kind==='SpringConstraint')return new SpringConstraint();if(kind==='RemoteEvent')return new RemoteEvent();throw new Error('Instance.new("'+kind+'") is unavailable in this prototype');}};
 window.Instance=InstanceFactory;window.Vector3=Vector3;window.Color3=Color3;window.CFrame=CFrame;
-function _markSceneDirty(){_renderDirty=true;if(_applyingRemote)return;if(_runtimeUIReady&&typeof renderTree==='function')renderTree();if(_sceneRenderer){try{_sceneRenderer.upload(_renderParts());_renderDirty=false}catch(e){console.warn('GPU update deferred:',e)}}}
+function _isInWorkspacePart(p){for(let n=p.Parent;n;n=n.Parent)if(n===Workspace)return true;return false}
+function _markSceneDirty(){_renderDirty=true;if(_applyingRemote)return;if(_runtimeUIReady&&typeof renderTree==='function')renderTree()}
 function _renderParts(){return parts.filter(p=>!p._destroyed).map(p=>({shape:p.shape,pos:p.pos,size:p.size,color:p.color,yaw:p.yaw,rotation:p.rotation,rough:p.rough,metal:p.metal,emissive:p.emissive,studs:p.studs,transparency:p.transparency,id:p.Id}))}
-Workspace.DescendantAdded.Connect(node=>{if(node instanceof Part&&!parts.includes(node))parts.push(node);if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
-ReplicatedStorage.DescendantAdded.Connect(node=>{if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network&&node instanceof Part)_network.sendProperty(node,prop);_markSceneDirty()})}if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()});
+Workspace.DescendantAdded.Connect(node=>{
+ if(node instanceof Part){
+  if(!_partIndex.has(node)){_partIndex.set(node,parts.length);parts.push(node)}
+  if(node.Anchored)_movingParts.delete(node);else _movingParts.add(node);
+  if(!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network)_network.sendProperty(node,prop);_markSceneDirty()})}
+ }
+ if(node instanceof Constraint)_physicsConstraints.add(node);
+ if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()
+});
+ReplicatedStorage.DescendantAdded.Connect(node=>{
+ if(node instanceof Part&&!node._networkWired){node._networkWired=true;node.Changed.Connect(prop=>{if(!_applyingRemote&&_network)_network.sendProperty(node,prop);_markSceneDirty()})}
+ if(_network&&!_applyingRemote)_network.sendCreate(node);_markSceneDirty()
+});
 ReplicatedStorage.DescendantRemoving.Connect(node=>{_markSceneDirty()});
-Workspace.DescendantRemoving.Connect(node=>{const i=parts.indexOf(node);if(i>=0)parts.splice(i,1);_markSceneDirty()});
+Workspace.DescendantRemoving.Connect(node=>{
+ _movingParts.delete(node);_physicsConstraints.delete(node);
+ const i=_partIndex.get(node);
+ if(i!==undefined){const last=parts.pop();if(i<parts.length){parts[i]=last;_partIndex.set(last,i)}_partIndex.delete(node)}
+ _markSceneDirty()
+});
 const add=(shape,pos,size,brickColor,o={})=>{const defaultName=shape[0].toUpperCase()+shape.slice(1)+'_'+String(_instanceId).padStart(4,'0');const p=new Part(o.Name||defaultName,shape,pos,size,rgb(brickColor),o);p.Anchored=o.Anchored??true;p.CanCollide=o.CanCollide??true;Workspace.AddChild(p);return p};
 class PhysicsWorld {
   constructor(workspace){this.Workspace=workspace;this.Gravity=196.2;this.SafeY=-100;this._accumulator=0;this.StepRate=1/60;this.ConstraintsEnabled=true}
   _aabb(p){const h=p.Size.map(x=>x*.5),c=p.Position;return{min:c.map((x,i)=>x-h[i]),max:c.map((x,i)=>x+h[i]),c,h}}
   _resolve(body,other){if(!body.CanCollide||!other.CanCollide||body===other)return;const a=this._aabb(body),b=this._aabb(other),ov=[Math.min(a.max[0],b.max[0])-Math.max(a.min[0],b.min[0]),Math.min(a.max[1],b.max[1])-Math.max(a.min[1],b.min[1]),Math.min(a.max[2],b.max[2])-Math.max(a.min[2],b.min[2])];if(ov.some(v=>v<=0))return;let ax=0;if(ov[1]<ov[ax])ax=1;if(ov[2]<ov[ax])ax=2;const sign=a.c[ax]>=b.c[ax]?1:-1,p=body.Position;p[ax]+=sign*(ov[ax]+.0005);body._setPositionRaw(p);body.AssemblyLinearVelocity[ax]=0}
   _solveConstraints(dt,nodes){if(!this.ConstraintsEnabled)return;for(const c of nodes.filter(n=>n instanceof WeldConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){if(!c._offset)c._offset=sub(c.Part1.Position,c.Part0.Position);if(!c.Part1.Anchored){c.Part1._setPositionRaw(c.Part0.Position.map((v,i)=>v+c._offset[i]));c.Part1.AssemblyLinearVelocity=[...c.Part0.AssemblyLinearVelocity]}}for(const c of nodes.filter(n=>n instanceof SpringConstraint&&n.Enabled&&n.Part0 instanceof Part&&n.Part1 instanceof Part)){const a=c.Part0,b=c.Part1,dv=sub(b.Position,a.Position),len=Math.hypot(...dv)||.0001,dir=dv.map(x=>x/len),rel=dot(sub(b.AssemblyLinearVelocity,a.AssemblyLinearVelocity),dir),force=(len-c.FreeLength)*c.Stiffness+rel*c.Damping;if(!a.Anchored)a.AssemblyLinearVelocity=a.AssemblyLinearVelocity.map((v,i)=>v+dir[i]*force*dt);if(!b.Anchored)b.AssemblyLinearVelocity=b.AssemblyLinearVelocity.map((v,i)=>v-dir[i]*force*dt)}}
-  Step(dt){this._accumulator+=Math.min(Math.max(dt,0),.1);let changed=false;while(this._accumulator>=this.StepRate){const h=this.StepRate,nodes=this.Workspace.GetDescendants(),moving=nodes.filter(n=>n instanceof Part&&!n.Anchored);for(const p of moving){p.AssemblyLinearVelocity[1]-=this.Gravity*h;p._setPositionRaw(p.Position.map((v,i)=>v+p.AssemblyLinearVelocity[i]*h));for(const q of nodes)if(q instanceof Part&&q.Anchored&&q.CanCollide)this._resolve(p,q);if(p.Position[1]<this.SafeY){p._setPositionRaw([0,Math.max(1,p.Size[1]),0]);p.AssemblyLinearVelocity=[0,0,0]}p._changed('Position');changed=true}this._solveConstraints(h,nodes);this._accumulator-=h}if(changed)_markSceneDirty()}
+  Step(dt){
+    if(!_movingParts.size&&!_physicsConstraints.size){this._accumulator=0;return}
+    this._accumulator+=Math.min(Math.max(dt,0),.1);let changed=false;
+    while(this._accumulator>=this.StepRate){
+      const h=this.StepRate,moving=[..._movingParts],constraints=[..._physicsConstraints];
+      for(const p of moving){
+        if(p._destroyed||p.Anchored||!_isInWorkspacePart(p)){_movingParts.delete(p);continue}
+        p.AssemblyLinearVelocity[1]-=this.Gravity*h;
+        p._setPositionRaw(p.Position.map((v,i)=>v+p.AssemblyLinearVelocity[i]*h));
+        for(const q of parts)if(q!==p&&q.Anchored&&q.CanCollide)this._resolve(p,q);
+        if(p.Position[1]<this.SafeY){p._setPositionRaw([0,Math.max(1,p.Size[1]),0]);p.AssemblyLinearVelocity=[0,0,0]}
+        p._changed('Position');changed=true
+      }
+      this._solveConstraints(h,constraints);this._accumulator-=h
+    }
+    if(changed)_markSceneDirty()
+  }
 }
 const Physics=new PhysicsWorld(Workspace);Workspace.PhysicsWorld=Physics;window.CrimBloxPhysics=Physics;
 
@@ -884,8 +958,15 @@ document.getElementById('refreshTree').onclick=renderTree;
 document.getElementById('destroySelected').onclick=()=>{if(_selectedInstance&&_selectedInstance.Parent&&_selectedInstance!==Workspace&&_selectedInstance!==game&&_selectedInstance!==Players&&_selectedInstance!==ReplicatedStorage&&_selectedInstance!==ServerStorage)_selectedInstance.Destroy();_selectedInstance=null;renderTree()};
 function renderTree(){
  if(!_runtimeUIReady||explorerPanel.hidden)return;const host=document.getElementById('tree');host.replaceChildren();
- const addNode=(node,depth)=>{const b=document.createElement('button');b.className='tree-node'+(node===_selectedInstance?' selected':'');b.style.paddingLeft=(4+depth*14)+'px';b.textContent=(node instanceof Part?'▰ ':'▸ ')+node.Name+' ['+node.ClassName+']';b.onclick=()=>{_selectedInstance=node;renderTree();renderProperties(node)};host.appendChild(b);for(const c of node.GetChildren())addNode(c,depth+1)};
- addNode(game,0);if(_selectedInstance)renderProperties(_selectedInstance);else renderProperties(Workspace);
+ const MAX_TREE_ROWS=3000;let rows=0,truncated=false;
+ const addNode=(node,depth)=>{
+  if(rows>=MAX_TREE_ROWS){truncated=true;return}
+  const b=document.createElement('button');b.className='tree-node'+(node===_selectedInstance?' selected':'');b.style.paddingLeft=(4+depth*14)+'px';b.textContent=(node instanceof Part?'▰ ':'▸ ')+node.Name+' ['+node.ClassName+']';b.onclick=()=>{_selectedInstance=node;renderTree();renderProperties(node)};host.appendChild(b);rows++;
+  for(const c of node.GetChildren()){if(rows>=MAX_TREE_ROWS){truncated=true;break}addNode(c,depth+1)}
+ };
+ addNode(game,0);
+ if(truncated){const note=document.createElement('div');note.style.cssText='padding:6px;color:#aaa;font-size:11px';note.textContent='Explorer limited to first '+MAX_TREE_ROWS.toLocaleString()+' rows for performance.';host.appendChild(note)}
+ if(_selectedInstance)renderProperties(_selectedInstance);else renderProperties(Workspace);
 }
 function renderProperties(node){
  _selectedInstance=node;const host=document.getElementById('props');host.replaceChildren();
@@ -982,42 +1063,56 @@ function _importedNodeFromRecord(rec){
    const size=_vec3(_getImportedProp(props,'Size')??_getImportedProp(props,'size'),[4,1,2]).map((x)=>Math.max(.01,Math.abs(x)));
    const mat=_normalMaterial(_getImportedProp(props,'Material'));
    const options={rotation:_partRotation(props),Material:mat,Transparency:_numberProp(_getImportedProp(props,'Transparency'),0),Roughness:_numberProp(_getImportedProp(props,'Roughness'),.5),Metalness:_numberProp(_getImportedProp(props,'Reflectance'),0),Emissive:mat==='Neon'?1.15:_numberProp(_getImportedProp(props,'Emissive'),0),Anchored:_boolProp(_getImportedProp(props,'Anchored'),true),CanCollide:_boolProp(_getImportedProp(props,'CanCollide'),true)};
-   const part=new Part(name,shape,pos,size,color,options);part.ClassName=cls;part.ImportedProperties=props;part._ImportedReferent=rec._referent||null;return part;
+   const part=new Part(name,shape,pos,size,color,options);part.ClassName=cls;part._ImportedReferent=rec._referent||null;return part;
  }
  let node;
  if(cls==='Folder')node=new Folder(name);
  else if(cls==='Model'||cls==='Tool'||cls==='Accessory')node=new Model(name);
  else if(cls==='RemoteEvent')node=new RemoteEvent(name);
  else node=new Instance(name,cls);
- node.ImportedProperties=props;node._ImportedReferent=rec._referent||null;return node;
+ node._ImportedReferent=rec._referent||null;return node;
 }
 const _basePartClasses=new Set(['Part','MeshPart','UnionOperation','NegateOperation','IntersectOperation','PartOperation','WedgePart','CornerWedgePart','TrussPart','SpawnLocation','Seat','VehicleSeat','SkateboardPlatform']);
 const _serviceInstances={Workspace,ReplicatedStorage,ServerStorage,Players,Lighting,RunService};
-function _importTreeRoots(roots,{replaceWorld=false,sourceName='Roblox file'}={}){
+async function _importTreeRoots(roots,{replaceWorld=false,sourceName='Roblox file'}={}){
  if(!Array.isArray(roots)||!roots.length)throw new Error('The file contains no importable Roblox Instances.');
- _applyingRemote=true;let partCount=0,nodeCount=0,meshApprox=0;
+ _applyingRemote=true;let partCount=0,nodeCount=0,meshApprox=0,processed=0;
  try{
   if(replaceWorld){Workspace.ClearAllChildren();ReplicatedStorage.ClearAllChildren();ServerStorage.ClearAllChildren()}
-  const walk=(rec,parent=null)=>{
-   const cls=String(rec.ClassName||rec.className||'Instance');
+  const stack=[];for(let i=roots.length-1;i>=0;i--)stack.push({rec:roots[i],parent:null});
+  while(stack.length){
+   const item=stack.pop(),rec=item.rec,parent=item.parent,cls=String(rec.ClassName||rec.className||'Instance');
    let node;
-   if(!parent&&_serviceInstances[cls]){node=_serviceInstances[cls];const svcProps=rec._props||rec;for(const [prop,val] of Object.entries(svcProps)){if(prop.startsWith('_')||['ClassName','Children','Name','referent'].includes(prop))continue;const actual=Object.keys(svcProps).find(k=>k.toLowerCase()===prop.toLowerCase());if(actual&&actual in node&&actual!=='Parent'&&actual!=='Children'){try{node[actual]=val}catch{}}}}
-   else{node=_importedNodeFromRecord(rec);const destination=parent||Workspace;destination.AddChild(node);nodeCount++;if(node instanceof Part){partCount++;if(['MeshPart','UnionOperation','NegateOperation','IntersectOperation','PartOperation','TrussPart'].includes(cls))meshApprox++}}
+   if(!parent&&_serviceInstances[cls]){
+    node=_serviceInstances[cls];const svcProps=rec._props||rec;
+    for(const [prop,val] of Object.entries(svcProps)){
+     if(prop.startsWith('_')||['ClassName','Children','Name','referent'].includes(prop))continue;
+     const actual=Object.keys(svcProps).find(k=>k.toLowerCase()===prop.toLowerCase());
+     if(actual&&actual in node&&actual!=='Parent'&&actual!=='Children'){try{node[actual]=val}catch{}}
+    }
+   }else{
+    node=_importedNodeFromRecord(rec);(parent||Workspace).AddChild(node);nodeCount++;
+    if(node instanceof Part){partCount++;if(['MeshPart','UnionOperation','NegateOperation','IntersectOperation','PartOperation','TrussPart'].includes(cls))meshApprox++}
+   }
    const children=Array.isArray(rec.Children)?rec.Children:Array.isArray(rec.children)?rec.children:[];
-   for(const child of children)walk(child,node);
-  };
-  for(const root of roots)walk(root,null);
+   for(let i=children.length-1;i>=0;i--)stack.push({rec:children[i],parent:node});
+   if(rec._props)rec._props=null;
+   else for(const key of Object.keys(rec))if(!['ClassName','className','Name','name','Children','children','_referent','referent'].includes(key))delete rec[key];
+   processed++;
+   if(processed%1000===0){document.getElementById('scriptOutput').textContent='Importing '+sourceName+'… '+processed+' instances';await new Promise(resolve=>setTimeout(resolve,0))}
+  }
  }finally{_applyingRemote=false}
  _markSceneDirty();renderTree();
  return{parts:partCount,instances:nodeCount,approximated:meshApprox,source:sourceName};
 }
-function _loadRobloxXml(text,{replaceWorld=false,sourceName='Roblox XML'}={}){
- const doc=new DOMParser().parseFromString(text,'application/xml');
- if(doc.querySelector('parsererror'))throw new Error('The XML is malformed. Export the place/model as a valid .rbxlx or .rbxmx file.');
- const root=doc.documentElement;if(!root||root.tagName.toLowerCase()!=='roblox')throw new Error('This XML file is not a Roblox .rbxlx/.rbxmx document.');
- const items=[...root.children].filter(e=>e.tagName==='Item').map(_xmlItemToRecord);
- if(!items.length)throw new Error('No Roblox Item records were found in this XML file.');
- return _importTreeRoots(items,{replaceWorld,sourceName});
+async function _loadRobloxXml(text,{replaceWorld=false,sourceName='Roblox XML'}={}){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.querySelector('parsererror'))throw new Error('The XML is malformed. Export the place/model as a valid .rbxlx or .rbxmx file.');
+  const root=doc.documentElement;if(!root||root.tagName.toLowerCase()!=='roblox')throw new Error('This XML file is not a Roblox .rbxlx/.rbxmx document.');
+  const items=[...root.children].filter(e=>e.tagName==='Item').map(_xmlItemToRecord);
+  if(!items.length)throw new Error('No Roblox Item records were found in this XML file.');
+  root.replaceChildren();
+  return await _importTreeRoots(items,{replaceWorld,sourceName});
 }
 async function _loadRobloxBinary(buffer,{replaceWorld=false,sourceName='Roblox binary'}={}){
  const bytes=buffer instanceof ArrayBuffer?new Uint8Array(buffer):new Uint8Array(buffer.buffer,buffer.byteOffset,buffer.byteLength);
@@ -1061,10 +1156,10 @@ document.getElementById('sceneFile').onchange=async e=>{
   let result;
   if(ext==='cblx')result=_loadCblx(await file.text());
   else if(ext==='cbxm'){const records=_decodeGraph(await file.arrayBuffer(),'CBXM');_applyRecords(records,false);result={parts:records.filter(r=>r.classId===1).length,instances:records.length,approximated:0,source:'CrimBlox .cbxm'}}
-  else if(['rbxlx','rbxmx','xml'].includes(ext))result=_loadRobloxXml(await file.text(),{replaceWorld:ext==='rbxlx',sourceName:'.'+ext});
+  else if(['rbxlx','rbxmx','xml'].includes(ext))result=await _loadRobloxXml(await file.text(),{replaceWorld:ext==='rbxlx',sourceName:'.'+ext});
   else if(['rbxl','rbxm'].includes(ext)){
    const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
-   if(_isXMLBuffer(bytes)){const text=new TextDecoder().decode(bytes);result=_loadRobloxXml(text,{replaceWorld:ext==='rbxl',sourceName:'XML content in .'+ext})}
+   if(_isXMLBuffer(bytes)){const text=new TextDecoder().decode(bytes);result=await _loadRobloxXml(text,{replaceWorld:ext==='rbxl',sourceName:'XML content in .'+ext})}
    else result=await _loadRobloxBinary(buffer,{replaceWorld:ext==='rbxl',sourceName:'.'+ext});
   }else throw new Error('Unsupported file extension .'+ext+'. Supported: .rbxlx, .rbxl, .rbxm, .rbxmx, .cblx, .cbxm.');
   const note='Imported '+file.name+': '+result.parts+' renderable parts and '+Math.max(0,result.instances-result.parts)+' additional Instances'+(result.approximated?'; '+result.approximated+' mesh/union classes approximated by primitive geometry':'')+'.';
@@ -1111,7 +1206,11 @@ try {
   _runtimeUIReady = true; renderTree();
   let last = performance.now(), acc = 0, frames = 0;
   const loop = now => {
-    const dt = Math.min((now - last) / 1000, 0.1); last = now; Physics.Step(dt); if (_renderDirty) { r.upload(_renderParts()); _renderDirty = false; }
+    const dt = Math.min((now - last) / 1000, 0.1); last = now; Physics.Step(dt);
+    if (_renderDirty && !_applyingRemote) {
+      try { r.upload(_renderParts(), cam); _renderDirty = false; }
+      catch (e) { _renderDirty = false; gpuErr = '\n⚠ Render upload: ' + (e && e.message || e); console.error('CrimBlox render upload failed', e); }
+    }
     const sp = speed * (keys.has('ShiftLeft') ? 3 : 1) * dt;
     const f = [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), -Math.cos(cam.yaw) * Math.cos(cam.pitch)], rt = [Math.cos(cam.yaw), 0, Math.sin(cam.yaw)];
     const mv = (v, s) => { for (let i = 0; i < 3; i++) cam.pos[i] += v[i] * s; };
@@ -1119,7 +1218,7 @@ try {
     if (keys.has('KeyE')) cam.pos[1] += sp; if (keys.has('KeyQ')) cam.pos[1] -= sp;
     cam.pos[1] = Math.max(cam.pos[1], 0.6);
     r.render(cam, env, now / 1000);
-    acc += dt; frames++; if (acc > 0.5) { hud.textContent = `${(frames / acc).toFixed(0)} fps · ${parts.length} parts · ${skyNote}\nWASD move · Q/E down/up · Shift fast · drag to look · wheel speed · Instance tree / script subset${gpuErr}`; acc = 0; frames = 0; }
+    acc += dt; frames++; if (acc > 0.5) { hud.textContent = `${(frames / acc).toFixed(0)} fps · ${r.renderedCount}/${r.totalParts} visible parts${r.truncated?' (draw limit)':''} · ${skyNote}\nWASD move · Q/E down/up · Shift fast · drag to look · wheel speed · Instance tree / script subset${gpuErr}`; acc = 0; frames = 0; }
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
